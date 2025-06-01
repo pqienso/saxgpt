@@ -104,15 +104,9 @@ class MLASelfAttentionBlock(nn.Module):
                     self.causal_bool_mask[:T, :T], float("-inf")
                 )
             attention = F.softmax(attention, dim=-1)
-            v = (
-                self.w_uv(kv_latent)
-                .view(B, T, self.num_heads, C // self.num_heads)
-                .transpose(1, 2)
-            )
-            y = attention @ v
-            y = y.transpose(1, 2).contiguous().view(B, T, C)
 
-            o = self.residuals_dropout(self.w_o(y))
+            o = torch.einsum("bhTt,btd,dhs->bThs", attention, kv_latent, self.w_uv_w_o)
+            o = o.reshape([B, T, C])
             return o
 
     def train(self, mode: bool):
@@ -128,6 +122,9 @@ class MLASelfAttentionBlock(nn.Module):
         self.register_buffer("w_q_w_uk", torch.einsum("chs,hsl->hcl", w_q, w_uk))
 
         self.register_buffer(
-            "w_uv_w_o", torch.matmul(self.w_uv.weight.T, self.w_o.weight.T)
+            "w_uv_w_o",
+            torch.matmul(self.w_uv.weight.T, self.w_o.weight.T).view(
+                self.d_latent, self.num_heads, self.d_model // self.num_heads
+            ),
         )
         return super().train(False)
