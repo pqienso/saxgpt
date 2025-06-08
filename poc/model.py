@@ -6,6 +6,238 @@ import typing as tp
 import math
 
 
+class PositionalEncoding(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        device: torch.device,
+        dropout: float = 0.1,
+        max_len: int = 5000,
+    ):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).to(device)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, C = x.shape
+        x = x + self.pe[:, :T]
+        return self.dropout(x)
+
+
+class MHAModel(nn.Module):
+    def __init__(
+        self,
+        d_model: int = 128,
+        num_streams: int = 4,
+        vocab_size: int = 2048,
+        max_seq_len: int = 1600,
+        nhead: int = 8,
+        num_encoder_layers: int = 3,
+        num_decoder_layers: int = 3,
+        dim_feedforward: int = 256,
+        norm_first: bool = True,
+        bias: bool = False,
+        dropout: float = 0.1,
+        device: tp.Any | None = None,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.num_streams = num_streams
+        self.vocab_size = vocab_size
+        self.padding_index = vocab_size
+        self.seq_len = max_seq_len
+        self.emb = nn.ModuleList(
+            [
+                nn.Embedding(
+                    num_embeddings=vocab_size + 1,
+                    embedding_dim=d_model,
+                    padding_idx=self.padding_index,
+                    device=device,
+                )
+                for _ in range(num_streams)
+            ]
+        )
+        self.pe = PositionalEncoding(d_model, device, dropout, max_seq_len)
+        self.transformer = nn.Transformer(
+            d_model=d_model,
+            nhead=nhead,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=norm_first,
+            bias=bias,
+            device=device,
+        )
+        self.linears = nn.ModuleList(
+            [nn.Linear(d_model, vocab_size, device=device) for _ in range(num_streams)]
+        )
+        self.device = device
+
+    def forward(
+        self,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        src_is_causal: bool = False,
+        tgt_is_causal: bool = True,
+        memory_is_causal: bool = False,
+    ) -> torch.Tensor:
+        (
+            B,
+            _,
+            _,
+        ) = src.shape
+        assert (src >= self.padding_index).sum() == B * 20, (
+            "Padding index only allowed at start and end of src"
+        )
+        transformer_out = self._get_transformer_output(
+            src, tgt, src_is_causal, tgt_is_causal, memory_is_causal
+        )
+
+        B, T, C = transformer_out.shape
+        logits = torch.stack(
+            [linear(transformer_out) for linear in self.linears], dim=1
+        )
+
+        return logits
+
+    def generate(
+        self,
+        src: torch.Tensor,
+        src_is_causal: bool = False,
+        tgt_is_causal: bool = True,
+        memory_is_causal: bool = False,
+    ) -> torch.Tensor:
+        if src.dim() == 2:
+            src = src.unsqueeze(0)
+        B, num_streams, T = src.shape
+
+        first_token = torch.Tensor([[self.padding_index for _ in range(num_streams)]])
+        tgt = torch.zeros_like(src)
+        tgt[:, :, 0] = first_token
+        index = 1
+
+        while index < T:
+            tokens = self._get_next_token(
+                src,
+                tgt[:, :, :index],
+                src_is_causal=src_is_causal,
+                tgt_is_causal=tgt_is_causal,
+                memory_is_causal=memory_is_causal,
+            )
+            tgt[:, :, index] = tokens
+            index += 1
+        return tgt
+
+    def _get_transformer_output(
+        self,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        src_is_causal: bool = False,
+        tgt_is_causal: bool = True,
+        memory_is_causal: bool = False,
+    ) -> torch.Tensor:
+        if src.dim() == 2:
+            assert not self.training, "Use batched tensors for training"
+            src = src.unsqueeze(0)
+            tgt = tgt.unsqueeze(0)
+        B, num_streams, T = src.shape
+        assert num_streams == self.num_streams, (
+            f"src must have {self.num_streams} streams of token streams, not {num_streams}"
+        )
+        B, num_streams, T = tgt.shape
+        assert num_streams == self.num_streams, (
+            f"tgt must have {self.num_streams} streams of token streams, not {num_streams}"
+        )
+
+        src_emb = sum(
+            [self.emb[stream](src[:, stream]) for stream in range(self.num_streams)]
+        )
+        tgt_emb = sum(
+            [self.emb[stream](tgt[:, stream]) for stream in range(self.num_streams)]
+        )
+        src_emb = self.pe(src_emb)
+        tgt_emb = self.pe(tgt_emb)
+
+        src_mask, tgt_mask, memory_mask = None, None, None
+        if src_is_causal:
+            src_mask = self.transformer.generate_square_subsequent_mask(
+                src.shape[-1], device=self.device
+            )
+        if tgt_is_causal:
+            tgt_mask = self.transformer.generate_square_subsequent_mask(
+                tgt.shape[-1], device=self.device
+            )
+        if memory_is_causal:
+            memory_mask = self.transformer.generate_square_subsequent_mask(
+                src.shape[-1], device=self.device
+            )
+
+        transformer_out = self.transformer(
+            src_emb,
+            tgt_emb,
+            src_mask=src_mask,
+            tgt_mask=tgt_mask,
+            memory_mask=memory_mask,
+        )  # B, T, C
+        return transformer_out
+
+    def _get_next_token(
+        self,
+        src: torch.Tensor,
+        tgt: torch.Tensor,
+        src_is_causal: bool = False,
+        tgt_is_causal: bool = True,
+        memory_is_causal: bool = False,
+    ) -> torch.Tensor:
+        transformer_out = self._get_transformer_output(
+            src, tgt, src_is_causal, tgt_is_causal, memory_is_causal
+        )
+
+        B, T, C = transformer_out.shape
+
+        logits = torch.stack(
+            [linear(transformer_out) for linear in self.linears], dim=1
+        )
+        # (B, num_streams, T, vocab_size)
+        return logits.argmax(-1)
+
+    @staticmethod
+    def add_delay_interleaving(
+        streams: torch.Tensor, padding_idx: int = 2048
+    ) -> torch.Tensor:
+        num_streams = len(streams)
+        new_streams = []
+        for index, stream in enumerate(streams):
+            new_streams.append(
+                F.pad(stream, (index + 1, num_streams - index), value=padding_idx)
+            )
+        return torch.stack(new_streams)
+
+    @staticmethod
+    def remove_delay_interleaving(streams: torch.Tensor) -> torch.Tensor:
+        num_streams = len(streams)
+        stream_length = streams.shape[-1]
+        new_streams = []
+        for index, stream in enumerate(streams):
+            new_streams.append(
+                torch.narrow(
+                    stream, -1, 1 + index, stream_length - (num_streams - 1) - 2
+                )
+            )
+        return torch.stack(new_streams)
+
+
 class MLASelfAttentionBlock(nn.Module):
     """
     MLA self-attention for decoder self-attention blocks, with streaming support

@@ -1,7 +1,7 @@
-# Dataset files
+# Dataset / model files
 *.wav
 *.pt
-
+*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

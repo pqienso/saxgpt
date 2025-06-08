@@ -61,17 +61,15 @@ if __name__ == "__main__":
     examples = examples[args.start : args.end]
 
     print("Beginning tokenization")
-    backing_list = []
-    lead_list = []
+    codes = []
     for example in tqdm(examples):
         lead_codes = convert_wav_to_tensor(processor, model, example.lead)
         backing_codes = convert_wav_to_tensor(processor, model, example.backing)
         assert lead_codes.shape == backing_codes.shape, (
             "length of tokenized audio must be equal"
         )
-        backing_list.append(backing_codes)
-        lead_list.append(lead_codes)
+        codes.append((backing_codes, lead_codes))
     torch.save(
-        (backing_list, lead_list),
+        codes,
         args.dest,
     )
