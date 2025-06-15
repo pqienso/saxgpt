@@ -30,7 +30,6 @@ dependencies:
       - antlr4-python3-runtime==4.9.3
       - cffi==1.17.1
       - cloudpickle==3.1.1
-      - demucs==4.1.0a2
       - einops==0.8.1
       - julius==0.2.7
       - lameenc==1.8.1

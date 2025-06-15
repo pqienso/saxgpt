@@ -137,9 +137,8 @@ if __name__ == "__main__":
         args.lr, args.checkpoint
     )
     criterion = nn.CrossEntropyLoss(ignore_index=2048).to(device)
-    train_loader = DataLoader(train_ds, batch_size=args.bsz)
+    train_loader = DataLoader(train_ds, batch_size=args.bsz, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.bsz)
-
     start_time = time()
     batch_acc = None
 

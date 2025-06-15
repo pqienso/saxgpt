@@ -309,4 +309,4 @@ Val Loss: 3.4202 | Val Acc: 27.48%
 ______________________________________________
 
 
-python train.py --cuda --lr 0.0005 "./audio_dataset/codes/aug_codes.pt" "./model_checkpoint/checkpoint.pth" 11.0
+python train.py --cuda --lr 1e-3 --bsz 4 "./audio_dataset/codes/aug_codes.pt" "./model_checkpoint/checkpoint.pth" 2.0
