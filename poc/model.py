@@ -204,13 +204,12 @@ class MHAModel(nn.Module):
             src, tgt, src_is_causal, tgt_is_causal, memory_is_causal
         )
 
-        B, T, C = transformer_out.shape
-
+        # (B, num_streams, T, vocab_size)
         logits = torch.stack(
             [linear(transformer_out) for linear in self.linears], dim=1
         )
-        # (B, num_streams, T, vocab_size)
-        return logits.argmax(-1)
+        # (B, num_streams)
+        return logits.argmax(-1)[:, :, -1]
 
     @staticmethod
     def add_delay_interleaving(
