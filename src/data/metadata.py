@@ -1,5 +1,7 @@
 import pandas as pd
 import json
+import argparse
+import yaml
 from pathlib import Path
 from typing import Optional
 
@@ -73,3 +75,38 @@ def update_metadata(
     if "index" in df.columns:
         df.drop(columns="index", inplace=True)
     df.to_csv(metadata_path, index=False)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Update audio metadata."
+    )
+    parser.add_argument(
+        "--config-path",
+        type=str,
+        help="Path to the YAML configuration file",
+        default="config/data/main.yaml",
+    )
+    args = parser.parse_args()
+
+    with open(Path(args.config_path), "r") as file:
+        config = yaml.safe_load(file)
+    try:
+        dl_dest_str = config["data_paths"]["dl_dest"]
+        stem_dest_str = config["data_paths"]["stem_dest"]
+        metadata_path_str = config["data_paths"]["metadata_path"]
+
+        url = config["url"]
+
+        n_splits = config["demucs"]["n_splits"]
+        n_shifts = config["demucs"]["n_shifts"]
+        n_jobs = config["demucs"]["n_jobs"]
+    except KeyError as e:
+        print(f"Error: Missing key in configuration file: {e}")
+        raise
+
+    dl_dest = Path(dl_dest_str).resolve()
+    stem_dest = Path(stem_dest_str).resolve()
+
+    update_metadata(Path(metadata_path_str), dl_dest, stem_dest)
