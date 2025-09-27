@@ -1,0 +1,11 @@
+url: 'https://www.youtube.com/playlist?list=PLQquVh8U-z8-Wh4l3o3Y2sGz6MdFEgDus'
+
+data_paths:
+  dl_dest: 'data/experiment/download'
+  stem_dest: 'data/experiment/stems'
+  metadata_path: 'data/experiment/metadata.csv'
+
+demucs:
+  n_splits: 2
+  n_shifts: 2
+  n_jobs: 16
