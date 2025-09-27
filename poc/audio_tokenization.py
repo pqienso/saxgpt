@@ -7,8 +7,7 @@ from tqdm import tqdm
 
 from data_processing.data_pipeline import AudioExample
 
-EXAMPLE_SIZE = 30 * 50
-STRIDE = 10 * 50
+EXAMPLE_SIZE = 30 * 50 # 50 tokens = 1s
 
 
 def convert_wav_to_tensor(

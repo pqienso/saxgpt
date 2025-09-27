@@ -1,9 +1,7 @@
 from typing import List
 import yt_dlp
-import os
 import re
-import pandas as pd
-from glob import glob
+from pathlib import Path
 
 
 def extract_video_id(youtube_url: str):
@@ -22,18 +20,19 @@ def is_video_url(youtube_url: str) -> bool:
     return bool(re.match(video_pattern, youtube_url))
 
 
-def download_youtube_wav(video_url: str, download_folder: str) -> None:
+def download_youtube_wav(video_url: str, download_folder: Path) -> None:
     video_id = extract_video_id(video_url)
     assert video_id is not None, "URL must be a valid YouTube video"
 
-    wav_file_name = os.path.join(download_folder, f"{video_id}.wav")
-    if os.path.exists(wav_file_name):
-        print(f"File '{wav_file_name}' already exists. Skipping download.")
+    wav_file_path = download_folder / f"{video_id}.wav"
+    
+    if wav_file_path.exists():
+        print(f"File '{wav_file_path}' already exists. Skipping download.")
         return
 
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": os.path.join(download_folder, "%(id)s.%(ext)s"),
+        "outtmpl": str(download_folder / "%(id)s.%(ext)s"),
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -67,7 +66,7 @@ def extract_url_title(youtube_url: str) -> str:
         return info_dict["title"]
 
 
-def ingest_audio_url(youtube_url: str, download_folder: str) -> None:
+def ingest_audio_url(youtube_url: str, download_folder: Path) -> None:
     is_video = is_video_url(youtube_url)
     is_playlist = is_playlist_url(youtube_url)
     assert is_video or is_playlist, "URL must be either a YouTube playlist or video"
@@ -77,27 +76,6 @@ def ingest_audio_url(youtube_url: str, download_folder: str) -> None:
     else:
         video_urls = [youtube_url]
 
-    for url in video_urls:
+    for i, url in enumerate(video_urls):
+        print(f"\n\n Downloading {i + 1} of {len(video_urls)}")
         download_youtube_wav(url, download_folder)
-
-
-def update_audio_titles(audio_metadata_csv_path: str, audio_download_path: str) -> None:
-    df = pd.read_csv(audio_metadata_csv_path).set_index("video_id", drop=True)
-    audio_files = glob(os.path.join(audio_download_path, "*.wav"))
-    new_audio_metadata = []
-    for audio_file in audio_files:
-        video_id = os.path.splitext(os.path.basename(audio_file))[0]
-        if video_id not in df.index:
-            video_title = extract_url_title(
-                f"https://www.youtube.com/watch?v={video_id}"
-            )
-            new_audio_metadata.append(
-                {
-                    "video_id": video_id,
-                    "video_title": video_title,
-                    "valid_windows": pd.NA,
-                }
-            )
-    new_df = pd.DataFrame(new_audio_metadata)
-    df = pd.concat([new_df, df.reset_index()], axis="index").reset_index(drop=True)
-    df.to_csv(audio_metadata_csv_path, index=False)
