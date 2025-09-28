@@ -64,13 +64,13 @@ def update_metadata(
     metadata_path: Path,
     download_folder: Path,
     stems_folder: Path,
+    **kwargs,
 ) -> None:
     df = update_index(
-        metadata_path if metadata_path.exists() else None,
-        download_folder
+        metadata_path if metadata_path.exists() else None, download_folder
     )
     df = add_valid_windows(df, stems_folder)
-    df = add_audio_lengths(df, download_folder)
+    df = add_audio_lengths(df, download_folder, **kwargs)
 
     if "index" in df.columns:
         df.drop(columns="index", inplace=True)
@@ -79,9 +79,7 @@ def update_metadata(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser = argparse.ArgumentParser(
-        description="Update audio metadata."
-    )
+    parser = argparse.ArgumentParser(description="Update audio metadata.")
     parser.add_argument(
         "--config-path",
         type=str,
@@ -102,6 +100,8 @@ if __name__ == "__main__":
         n_splits = config["demucs"]["n_splits"]
         n_shifts = config["demucs"]["n_shifts"]
         n_jobs = config["demucs"]["n_jobs"]
+
+        rms_window_args = config["rms_window"]
     except KeyError as e:
         print(f"Error: Missing key in configuration file: {e}")
         raise
@@ -109,4 +109,4 @@ if __name__ == "__main__":
     dl_dest = Path(dl_dest_str).resolve()
     stem_dest = Path(stem_dest_str).resolve()
 
-    update_metadata(Path(metadata_path_str), dl_dest, stem_dest)
+    update_metadata(Path(metadata_path_str), dl_dest, stem_dest, **rms_window_args)

@@ -1,11 +1,31 @@
 url: 'https://youtube.com/playlist?list=PLQquVh8U-z89SjTFOMgGVCuYfv9M-cBdG&si=h2-fwdCY2vQOM-lK'
 
 data_paths:
-  dl_dest: 'data/download'
-  stem_dest: 'data/stems'
-  metadata_path: 'data/metadata.csv'
+  dl_dest: 'data/main/download'
+  stem_dest: 'data/main/stems'
+  metadata_path: 'data/main/metadata.csv'
 
 demucs:
   n_splits: 2
   n_shifts: 2
   n_jobs: 16
+
+rms_window:
+  rms_threshold: 0.0175
+  min_window_size_seconds: 30.0
+  rms_frame_length_seconds: 10
+  rms_stride_seconds: 0.2
+
+augmentation: null
+
+# augmentation:
+#   sample_rate: 32000
+#   num_pitch_augs: 4
+#   pitch_step_size: 2
+#   tempo_ratios:
+#     - 0.8
+#     - 0.9
+#     - 1.1
+#     - 1.25
+#   n_fft: 4096
+#   hop_length: 512

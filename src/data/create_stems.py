@@ -6,14 +6,13 @@ from pathlib import Path
 
 from data_ingestion import ingest_audio_url
 from stem_split import stem_split_all_in_folder
-from metadata import update_metadata
 
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn", force=True)
 
     parser = argparse.ArgumentParser(
-        description="Ingest audio, split stems and update metadata."
+        description="Ingest audio and split stems."
     )
     parser.add_argument(
         "--config-path",
@@ -72,6 +71,4 @@ if __name__ == "__main__":
         repeated_splits=n_splits - 1,
     )
 
-    print("\n\nStem split complete. Updating metadata...")
-    update_metadata(Path(metadata_path_str), dl_dest, stem_dest)
-    print("\n\nDataset created.")
+    print("\n\nStem split complete. Dataset created.")

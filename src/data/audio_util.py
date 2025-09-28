@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import torchaudio
 from typing import Dict, List, Optional, Tuple
 from datetime import timedelta
+from pathlib import Path
 
 
 def mono_resample_audio(audio: torch.Tensor, old_sr: int, final_sr: int):
@@ -17,10 +18,10 @@ def mix_audio_values(audio_values: Dict, channels: List[str]):
 
 
 def trim_wav_file(
-    file_path: str,
+    file_path: Path,
     start: Optional[timedelta] = None,
     end: Optional[timedelta] = None,
-    out_file_path: Optional[str] = None,
+    out_file_path: Optional[Path] = None,
 ) -> None:
     waveform, sample_rate = torchaudio.load(file_path)
     if start is not None:
@@ -39,7 +40,7 @@ def get_audio_length(file_path: str) -> float:
 
 
 def extract_windows_above_threshold(
-    audio_file_path: str,
+    audio_file_path: Path,
     rms_threshold: float = 0.0175,
     min_window_size_seconds: float = 30,
     rms_frame_length_seconds: float = 10,

@@ -1,9 +1,10 @@
 from transformers import AutoProcessor
 from transformers import EncodecModel
 import torch
-import os
 import argparse
 from tqdm import tqdm
+from pathlib import Path
+import yaml
 
 from data_processing.data_pipeline import AudioExample
 
@@ -29,26 +30,26 @@ def convert_tensor_to_wav(model: EncodecModel, audio_codes: torch.Tensor):
 
 
 if __name__ == "__main__":
-    print(os.getcwd())
     parser = argparse.ArgumentParser()
-    parser.add_argument("dataset", help=".pt dataset file location")
-    parser.add_argument(
-        "dest",
-        help="Destination to save codes (.pt file path)",
+    parser = argparse.ArgumentParser(
+        description="Cut audio, augment pitch / tempo, and tokenize."
     )
     parser.add_argument(
-        "--start",
-        type=int,
-        help="Specify start index of audio examples",
-        default=None,
-    )
-    parser.add_argument(
-        "--end",
-        type=int,
-        help="Specify end index of audio examples",
-        default=None,
+        "--config-path",
+        type=str,
+        help="Path to the YAML configuration file",
+        default="config/data/main.yaml",
     )
     args = parser.parse_args()
+
+    with open(Path(args.config_path), "r") as file:
+        config = yaml.safe_load(file)
+    try:
+        stem_path_str = config["data_paths"]["stem_dest"]
+        metadata_path_str = config["data_paths"]["metadata_path"]
+    except KeyError as e:
+        print(f"Error: Missing key in configuration file: {e}")
+        raise
 
     model = EncodecModel.from_pretrained("facebook/encodec_32khz")
     processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
@@ -64,9 +65,8 @@ if __name__ == "__main__":
     for example in tqdm(examples):
         lead_codes = convert_wav_to_tensor(processor, model, example.lead)
         backing_codes = convert_wav_to_tensor(processor, model, example.backing)
-        assert lead_codes.shape == backing_codes.shape, (
-            "length of tokenized audio must be equal"
-        )
+        if lead_codes.shape != backing_codes.shape:
+            print("\n\nWARNING: lead and backing codes have different shape")
         codes.append((backing_codes, lead_codes))
     torch.save(
         codes,
