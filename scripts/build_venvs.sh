@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 python3.9 -m venv .venv/demucs
 source .venv/demucs/bin/activate
