@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import torchaudio
+from torch import Tensor
 from typing import Dict, List, Optional, Tuple
 from datetime import timedelta
 from pathlib import Path
@@ -22,7 +23,7 @@ def trim_wav_file(
     start: Optional[timedelta] = None,
     end: Optional[timedelta] = None,
     out_file_path: Optional[Path] = None,
-) -> None:
+) -> Optional[Tensor]:
     waveform, sample_rate = torchaudio.load(file_path)
     if start is not None:
         start = int(start.total_seconds() * sample_rate)
@@ -30,7 +31,7 @@ def trim_wav_file(
         end = int(end.total_seconds() * sample_rate)
     waveform = waveform[:, start:end]
     if out_file_path is None:
-        out_file_path = file_path
+        return waveform
     torchaudio.save(out_file_path, waveform, sample_rate)
 
 

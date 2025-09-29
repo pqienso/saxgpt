@@ -1,9 +1,10 @@
 url: 'https://www.youtube.com/playlist?list=PLQquVh8U-z8-Wh4l3o3Y2sGz6MdFEgDus'
 
 data_paths:
-  dl_dest: 'data/experiment/download'
-  stem_dest: 'data/experiment/stems'
+  dl_dest: 'data/experiment/download/'
+  stem_dest: 'data/experiment/stems/'
   metadata_path: 'data/experiment/metadata.csv'
+  codes_dest: 'data/experiment/codes/'
 
 demucs:
   n_splits: 2
@@ -22,10 +23,7 @@ augmentation: null
 #   sample_rate: 32000
 #   num_pitch_augs: 4
 #   pitch_step_size: 2
-#   tempo_ratios:
-#     - 0.8
-#     - 0.9
-#     - 1.1
-#     - 1.25
+#   tempo_ratios: [0.8, 0.9, 1.1, 1.25]
 #   n_fft: 4096
 #   hop_length: 512
+

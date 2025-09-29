@@ -1,12 +1,19 @@
 from transformers import AutoProcessor
 from transformers import EncodecModel
 import torch
+from torch import Tensor
 import argparse
 from tqdm import tqdm
 from pathlib import Path
 import yaml
+import pandas as pd
+from tqdm import tqdm
+from typing import List, Tuple, Dict
+import json
+from datetime import timedelta
 
-from data_processing.data_pipeline import AudioExample
+from audio_util import trim_wav_file
+from augmentation import AudioAugmenter
 
 EXAMPLE_SIZE = 30 * 50 # 50 tokens = 1s
 
@@ -29,6 +36,44 @@ def convert_tensor_to_wav(model: EncodecModel, audio_codes: torch.Tensor):
     return waveform.audio_values.detach()[0]
 
 
+def clip_valid_windows(metadata: List[Dict]) -> List[Tuple[Tensor, Tensor]]:
+    examples = []
+    for metadata_entry in tqdm(metadata):
+        video_id = metadata_entry["video_id"]
+        windows = json.loads(metadata_entry["valid_windows"])
+        for window in windows:
+            start, end = window[0], window[1]
+            lead_audio = trim_wav_file(
+                stem_path / f"sax_{video_id}.wav",
+                timedelta(seconds=start),
+                timedelta(seconds=end),
+            )
+            backing_audio = trim_wav_file(
+                stem_path / f"rhythm_{video_id}.wav",
+                timedelta(seconds=start),
+                timedelta(seconds=end),
+            )
+            examples.append((lead_audio, backing_audio))
+    return examples
+
+
+def augment_examples(
+    examples: List[Tuple[Tensor, Tensor]],
+    augmenter: AudioAugmenter,
+) -> List[Tuple[Tensor, Tensor]]:
+    new_examples = []
+    for lead_audio, backing_audio in tqdm(examples):
+        augmented_leads = augmenter(lead_audio)
+        augmented_backings = augmenter(backing_audio)
+        new_examples.extend(
+            [
+                (lead, backing)
+                for lead, backing in
+                zip(lead_audio, backing_audio)
+            ]
+        )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = argparse.ArgumentParser(
@@ -47,24 +92,33 @@ if __name__ == "__main__":
     try:
         stem_path_str = config["data_paths"]["stem_dest"]
         metadata_path_str = config["data_paths"]["metadata_path"]
+        aug_cfg = config["augmentation"]
     except KeyError as e:
         print(f"Error: Missing key in configuration file: {e}")
         raise
 
+    stem_path = Path(stem_path_str)
+    metadata = pd.read_csv(metadata_path_str).to_dict(orient="records")
+    
+    print("\n\nClipping audio files...")
+    examples = clip_valid_windows(metadata)
+    print(f"Got {len(examples)} from {len(metadata)} audio files.")
+
+    if aug_cfg is not None:
+        print("\n\nAugmenting audio clips...")
+        augmenter = AudioAugmenter(**aug_cfg)
+        examples = augment_examples(examples, augmenter)
+
+
+    print("\n\nBeginning tokenization")
+    print("Getting model and processor")
     model = EncodecModel.from_pretrained("facebook/encodec_32khz")
-    processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
+    processor = AutoProcessor.from_pretrained("facebook/encodec_32khz", use_fast=True)
 
-    print("Loading examples...")
-    examples: list[AudioExample] = torch.load(
-        args.dataset, map_location="cpu", weights_only=False
-    )
-    examples = examples[args.start : args.end]
-
-    print("Beginning tokenization")
     codes = []
-    for example in tqdm(examples):
-        lead_codes = convert_wav_to_tensor(processor, model, example.lead)
-        backing_codes = convert_wav_to_tensor(processor, model, example.backing)
+    for backing, lead in tqdm(examples):
+        lead_codes = convert_wav_to_tensor(processor, model, lead)
+        backing_codes = convert_wav_to_tensor(processor, model, backing)
         if lead_codes.shape != backing_codes.shape:
             print("\n\nWARNING: lead and backing codes have different shape")
         codes.append((backing_codes, lead_codes))

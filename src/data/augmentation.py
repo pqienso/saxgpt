@@ -1,8 +1,8 @@
 import torch
-import torchaudio.functional as AF
+import torchaudio.functional as F
 import torchaudio.transforms as T
 from torch import Tensor
-from typing import List, Set
+from typing import List
 
 
 class AudioAugmenter(torch.nn.Module):
@@ -11,7 +11,7 @@ class AudioAugmenter(torch.nn.Module):
         sample_rate: int = 32000,
         num_pitch_augs: int = 4,
         pitch_step_size: int = 2,
-        tempo_ratios: Set[float] = {0.8, 0.9, 1.1, 1.25},
+        tempo_ratios: List[float] = [0.8, 0.9, 1.1, 1.25],
         n_fft: int = 4096,
         hop_length: int = 512,
     ):
@@ -23,7 +23,7 @@ class AudioAugmenter(torch.nn.Module):
         ]
         semitone_steps.append(0)
         if 1.0 not in tempo_ratios:
-            tempo_ratios.add(1.0)
+            tempo_ratios.append(1.0)
         self.semitone_steps = semitone_steps
         self.tempo_ratios = tempo_ratios
 
@@ -35,7 +35,7 @@ class AudioAugmenter(torch.nn.Module):
         audio_examples = []
 
         for num_semitones in self.semitone_steps:
-            pitch_aug = AF.pitch_shift(
+            pitch_aug = F.pitch_shift(
                 audio, self.sample_rate, num_semitones
             )
             
