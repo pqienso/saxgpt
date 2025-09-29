@@ -5,3 +5,4 @@ torch
 torchaudio
 torchvision
 yt-dlp
+soundfile
