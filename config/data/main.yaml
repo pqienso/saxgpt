@@ -4,10 +4,10 @@ data_paths:
   dl_dest: 'data/main/download'
   stem_dest: 'data/main/stems'
   metadata_path: 'data/main/metadata.csv'
-  codes_dest: 'data/experiment/codes/'
+  codes_dest: 'data/experiment/codes.pt'
 
 demucs:
-  n_splits: 2
+  n_splits: 1
   n_shifts: 2
   n_jobs: 16
 

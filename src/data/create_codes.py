@@ -92,12 +92,14 @@ if __name__ == "__main__":
     try:
         stem_path_str = config["data_paths"]["stem_dest"]
         metadata_path_str = config["data_paths"]["metadata_path"]
+        codes_dest_str = config["data_paths"]["codes_dest"]
         aug_cfg = config["augmentation"]
     except KeyError as e:
         print(f"Error: Missing key in configuration file: {e}")
         raise
 
     stem_path = Path(stem_path_str)
+    codes_dest = Path(codes_dest_str)
     metadata = pd.read_csv(metadata_path_str).to_dict(orient="records")
     
     print("\n\nClipping audio files...")
@@ -122,7 +124,5 @@ if __name__ == "__main__":
         if lead_codes.shape != backing_codes.shape:
             print("\n\nWARNING: lead and backing codes have different shape")
         codes.append((backing_codes, lead_codes))
-    torch.save(
-        codes,
-        args.dest,
-    )
+    torch.save(codes, codes_dest)
+    print("\n\nTokenization complete.")
