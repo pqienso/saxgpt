@@ -16,23 +16,7 @@ import random
 from audio_util import trim_wav_file
 from augmentation import AudioAugmenter
 from dataset_util import SequenceDataset, train_test_split
-
-def convert_wav_to_tensor(
-    processor: AutoProcessor, model: EncodecModel, audio_values: torch.Tensor
-):
-    inputs = processor(
-        raw_audio=audio_values.squeeze(),
-        sampling_rate=processor.sampling_rate,
-        return_tensors="pt",
-    )
-    output = model.encode(inputs["input_values"], inputs["padding_mask"])
-    return output.audio_codes.squeeze()
-
-
-def convert_tensor_to_wav(model: EncodecModel, audio_codes: torch.Tensor):
-    audio_codes = audio_codes.unsqueeze(0).unsqueeze(0)
-    waveform = model.decode(audio_codes, [None])
-    return waveform.audio_values.detach()[0]
+from tokenization import tokenize
 
 
 def clip_valid_windows(metadata: List[Dict]) -> List[Tuple[Tensor, Tensor]]:
@@ -124,8 +108,8 @@ if __name__ == "__main__":
 
     codes = []
     for backing, lead in tqdm(examples):
-        lead_codes = convert_wav_to_tensor(processor, model, lead)
-        backing_codes = convert_wav_to_tensor(processor, model, backing)
+        lead_codes = tokenize(processor, model, lead)
+        backing_codes = tokenize(processor, model, backing)
         if lead_codes.shape != backing_codes.shape:
             print("\n\nWARNING: lead and backing codes have different shape")
         codes.append((backing_codes, lead_codes))

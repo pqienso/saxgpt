@@ -4,5 +4,6 @@ transformers
 torch
 torchaudio
 torchvision
+tqdm
 yt-dlp
 soundfile
