@@ -8,7 +8,7 @@ data_paths:
   datasets_dest: 'data/main/datasets/'
 
 demucs:
-  n_splits: 1
+  n_splits: 2
   n_shifts: 2
   n_jobs: 16
 
