@@ -7,8 +7,6 @@ data_paths:
   codes_dest: 'data/main/codes.pt'
   datasets_dest: 'data/main/datasets/'
 
-example_length: 30.0
-
 demucs:
   n_splits: 1
   n_shifts: 2
