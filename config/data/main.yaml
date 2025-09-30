@@ -1,10 +1,13 @@
 url: 'https://youtube.com/playlist?list=PLQquVh8U-z89SjTFOMgGVCuYfv9M-cBdG&si=h2-fwdCY2vQOM-lK'
 
 data_paths:
-  dl_dest: 'data/main/download'
-  stem_dest: 'data/main/stems'
+  dl_dest: 'data/main/download/'
+  stem_dest: 'data/main/stems/'
   metadata_path: 'data/main/metadata.csv'
-  codes_dest: 'data/experiment/codes.pt'
+  codes_dest: 'data/main/codes.pt'
+  datasets_dest: 'data/main/datasets/'
+
+example_length: 30.0
 
 demucs:
   n_splits: 1
@@ -17,8 +20,12 @@ rms_window:
   rms_frame_length_seconds: 10
   rms_stride_seconds: 0.2
 
-augmentation: null
+train_test_split:
+  seed: 67
+  test: 0.1
+  val: 0.1
 
+augmentation: null
 # augmentation:
 #   sample_rate: 32000
 #   num_pitch_augs: 4
@@ -27,3 +34,7 @@ augmentation: null
 #   n_fft: 4096
 #   hop_length: 512
 
+dataset:
+  seq_len: 1500 # 30 * 50
+  stride: 750
+  padding_idx: 2048

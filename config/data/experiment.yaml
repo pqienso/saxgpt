@@ -5,6 +5,7 @@ data_paths:
   stem_dest: 'data/experiment/stems/'
   metadata_path: 'data/experiment/metadata.csv'
   codes_dest: 'data/experiment/codes.pt'
+  datasets_dest: 'data/experiment/datasets/'
 
 demucs:
   n_splits: 1
@@ -17,8 +18,12 @@ rms_window:
   rms_frame_length_seconds: 10
   rms_stride_seconds: 0.2
 
-augmentation: null
+train_test_split:
+  seed: 67
+  test: 0.1
+  val: 0.1
 
+augmentation: null
 # augmentation:
 #   sample_rate: 32000
 #   num_pitch_augs: 4
@@ -27,3 +32,7 @@ augmentation: null
 #   n_fft: 4096
 #   hop_length: 512
 
+dataset:
+  seq_len: 1500 # 30 * 50
+  stride: 750
+  padding_idx: 2048
