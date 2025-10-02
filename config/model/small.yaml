@@ -20,10 +20,10 @@ model:
 
 
 training:
-  num_epochs: 2000
+  num_epochs: 200
   # Effective batch size = batch_size * gradient_accumulation_steps
-  batch_size: 4
-  gradient_accumulation_steps: 8
+  batch_size: 8
+  gradient_accumulation_steps: 4
   
   optimizer:
     type: "adamw"
@@ -54,10 +54,10 @@ training:
     weight_decay: 0.01
   
   # Logging and checkpointing
-  output_dir: "outputs/experiment_1"
-  log_interval: 2           # Log metrics every N steps
-  save_interval: 50       # Save checkpoint every N epochs
+  output_dir: "models/small"
+  log_interval: 10           # Log metrics every N steps
+  save_interval: 50      # Save checkpoint every N epochs
   num_workers: 2             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "outputs/experiment_1/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "models/small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

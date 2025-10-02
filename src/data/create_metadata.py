@@ -86,7 +86,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = argparse.ArgumentParser(description="Update audio metadata.")
     parser.add_argument(
-        "--config-path",
+        "--config",
         type=str,
         help="Path to the YAML configuration file",
         default="config/data/main.yaml",

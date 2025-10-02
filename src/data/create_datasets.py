@@ -62,7 +62,7 @@ if __name__ == "__main__":
         description="Cut audio, augment pitch/tempo, tokenize, and split into train/test/val."
     )
     parser.add_argument(
-        "--config-path",
+        "--config",
         type=str,
         help="Path to the YAML configuration file",
         default="config/data/main.yaml",
