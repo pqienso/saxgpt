@@ -69,15 +69,13 @@ def remove_delay_interleaving(codes: Tensor) -> Tensor:
     return torch.stack(new_codes)
 
 
-class SequenceDataset(TensorDataset):
-    def __init__(
-        self,
-        data: List[Tuple[torch.Tensor, torch.Tensor]],
-        device: torch.device = torch.device("cpu"),
-        seq_len: int = EXAMPLE_SIZE,
-        stride: int = EXAMPLE_SIZE // 2,
-        padding_idx: int = 2048,
-    ):
+def get_tensor_dataset(
+    data: List[Tuple[torch.Tensor, torch.Tensor]],
+    device: torch.device = torch.device("cpu"),
+    seq_len: int = EXAMPLE_SIZE,
+    stride: int = EXAMPLE_SIZE // 2,
+    padding_idx: int = 2048,
+) -> TensorDataset:
         src = []
         tgt = []
         for backing, lead in data:
@@ -91,4 +89,4 @@ class SequenceDataset(TensorDataset):
         src = src.to(device)
         tgt = torch.vmap(lambda t: add_delay_interleaving(t, padding_idx))(tgt)
         tgt = tgt.to(device)
-        return super().__init__(src, tgt)
+        return TensorDataset(src, tgt)

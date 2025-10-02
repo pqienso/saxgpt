@@ -14,7 +14,7 @@ import random
 
 from audio_util import trim_wav_file
 from augmentation import AudioAugmenter
-from dataset_util import SequenceDataset, train_test_split
+from dataset_util import get_tensor_dataset, train_test_split
 from tokenization import tokenize
 
 
@@ -120,9 +120,9 @@ if __name__ == "__main__":
     random.seed(seed)
     train_ds, val_ds, test_ds = train_test_split(codes, test_prop, val_prop)
     print("Constructing datasets")
-    train_ds = SequenceDataset(train_ds, **dataset_args)
-    val_ds = SequenceDataset(val_ds, **dataset_args)
-    test_ds = SequenceDataset(test_ds, **dataset_args)
+    train_ds = get_tensor_dataset(train_ds, **dataset_args)
+    val_ds = get_tensor_dataset(val_ds, **dataset_args)
+    test_ds = get_tensor_dataset(test_ds, **dataset_args)
     torch.save(train_ds, datasets_dest / "train.pt")
     torch.save(val_ds, datasets_dest / "val.pt")
     torch.save(test_ds, datasets_dest / "test.pt")
@@ -131,4 +131,3 @@ if __name__ == "__main__":
     print(f"train_ds: {len(train_ds)} examples")
     print(f"val_ds: {len(val_ds)} examples")
     print(f"test_ds: {len(test_ds)} examples")
-

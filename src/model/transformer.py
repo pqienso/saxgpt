@@ -61,7 +61,9 @@ class EncoderDecoderTransformer(nn.Module):
         )
 
         # Output projection
-        self.output_projection = MultiCodesLinear(num_codebooks, vocab_size, d_model)
+        self.output_projection = MultiCodesLinear(
+            num_codebooks, vocab_size - 1, d_model
+        )
 
         self._reset_parameters()
 
