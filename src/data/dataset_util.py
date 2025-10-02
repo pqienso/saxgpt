@@ -45,26 +45,28 @@ def train_test_split(
 
 
 def add_delay_interleaving(
-    streams: Tensor, padding_idx: int = 2048
+    codes: Tensor, padding_idx: int = 2048
 ) -> Tensor:
-    num_streams = len(streams)
-    new_streams = []
-    for index, stream in enumerate(streams):
-        new_streams.append(
-            F.pad(stream, (index + 1, num_streams - index), value=padding_idx)
+    """[num_codebooks, seq_len] -> [num_codebooks, seq_len]"""
+    num_codebooks = len(codes)
+    new_codes = []
+    for index, stream in enumerate(codes):
+        new_codes.append(
+            F.pad(stream, (index + 1, num_codebooks - index), value=padding_idx)
         )
-    return torch.stack(new_streams)
+    return torch.stack(new_codes)
 
 
-def remove_delay_interleaving(streams: Tensor) -> Tensor:
-    num_streams = len(streams)
-    stream_length = streams.shape[-1]
-    new_streams = []
-    for index, stream in enumerate(streams):
-        new_streams.append(
-            torch.narrow(stream, -1, 1 + index, stream_length - (num_streams - 1) - 2)
+def remove_delay_interleaving(codes: Tensor) -> Tensor:
+    """[num_codebooks, seq_len] -> [num_codebooks, seq_len]"""
+    num_codebooks = codes.shape[-2]
+    stream_length = codes.shape[-1]
+    new_codes = []
+    for index, stream in enumerate(codes):
+        new_codes.append(
+            torch.narrow(stream, -1, 1 + index, stream_length - (num_codebooks - 1) - 2)
         )
-    return torch.stack(new_streams)
+    return torch.stack(new_codes)
 
 
 class SequenceDataset(TensorDataset):
