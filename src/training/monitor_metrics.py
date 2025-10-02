@@ -48,11 +48,10 @@ def plot_metrics(df: pd.DataFrame, output_path: str = None):
         axes[0, 1].plot(
             epoch_df["epoch"],
             epoch_df["epoch_train_loss"],
-            marker="o",
             label="Train Loss",
         )
         axes[0, 1].plot(
-            epoch_df["epoch"], epoch_df["epoch_val_loss"], marker="s", label="Val Loss"
+            epoch_df["epoch"], epoch_df["epoch_val_loss"], label="Val Loss"
         )
         axes[0, 1].set_xlabel("Epoch")
         axes[0, 1].set_ylabel("Loss")
@@ -80,13 +79,11 @@ def plot_metrics(df: pd.DataFrame, output_path: str = None):
         axes[1, 1].plot(
             epoch_df["epoch"],
             epoch_df["epoch_train_accuracy"],
-            marker="o",
             label="Train Acc",
         )
         axes[1, 1].plot(
             epoch_df["epoch"],
             epoch_df["epoch_val_accuracy"],
-            marker="s",
             label="Val Acc",
         )
         axes[1, 1].set_xlabel("Epoch")

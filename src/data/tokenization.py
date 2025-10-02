@@ -2,8 +2,13 @@ from torch import Tensor
 from transformers import AutoProcessor
 from transformers import EncodecModel
 
+model = EncodecModel.from_pretrained("facebook/encodec_32khz")
+processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
+
 def tokenize(
-    processor: AutoProcessor, model: EncodecModel, audio_values: Tensor
+    audio_values: Tensor,
+    processor: AutoProcessor = processor,
+    model: EncodecModel = model,
 ):
     inputs = processor(
         raw_audio=audio_values.squeeze(),
@@ -14,7 +19,7 @@ def tokenize(
     return output.audio_codes.squeeze()
 
 
-def detokenize(model: EncodecModel, audio_codes: Tensor):
+def detokenize(audio_codes: Tensor, model: EncodecModel = model):
     audio_codes = audio_codes.unsqueeze(0).unsqueeze(0)
     waveform = model.decode(audio_codes, [None])
     return waveform.audio_values.detach()[0]

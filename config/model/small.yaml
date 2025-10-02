@@ -55,7 +55,7 @@ training:
   
   # Logging and checkpointing
   output_dir: "models/small"
-  log_interval: 10           # Log metrics every N steps
+  log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 2             # DataLoader workers
   

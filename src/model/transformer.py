@@ -34,6 +34,7 @@ class EncoderDecoderTransformer(nn.Module):
         self.num_decoder_layers = num_decoder_layers
         self.num_codebooks = num_codebooks
         self.vocab_size = vocab_size
+        self.padding_idx = padding_idx
 
         self.embedding = MultiCodesEmbedding(
             num_codebooks, vocab_size, d_model, padding_idx, scale_embeddings
@@ -205,7 +206,6 @@ class EncoderDecoderTransformer(nn.Module):
         src: torch.Tensor,
         max_len: int,
         start_tokens: torch.Tensor,
-        end_token: int,
         src_key_padding_mask: Optional[torch.Tensor] = None,
         temperature: float = 1.0,
         top_k: Optional[int] = None,
@@ -213,12 +213,13 @@ class EncoderDecoderTransformer(nn.Module):
     ) -> torch.Tensor:
         """
         Autoregressive generation with full KV-caching for multiple codebooks.
+        Automatically handles delayed codebook starts by forcing padding_idx tokens
+        in the appropriate positions.
 
         Args:
             src: [batch_size, num_codebooks, src_seq_len]
             max_len: Maximum generation length
             start_tokens: [batch_size, num_codebooks] - Start tokens for each codebook
-            end_token: End token ID (stops generation for that codebook)
             src_key_padding_mask: [batch_size, src_seq_len]
             temperature: Sampling temperature (higher = more random)
             top_k: If set, only sample from top-k tokens
@@ -260,7 +261,7 @@ class EncoderDecoderTransformer(nn.Module):
                 is_causal=True,
             )
 
-            # Get logits for last position: [batch_size, num_codebooks, vocab_size]
+            # Get logits for last position: [batch_size, num_codebooks, vocab_size-1]
             next_token_logits = logits[:, :, -1, :] / temperature
 
             # Apply sampling to each codebook
@@ -269,41 +270,50 @@ class EncoderDecoderTransformer(nn.Module):
             )
 
             for cb_idx in range(self.num_codebooks):
-                cb_logits = next_token_logits[:, cb_idx, :]  # [batch_size, vocab_size]
+                # Check if this codebook is still in its delay period
+                # CB0 starts at position 1, CB1 at position 2, CB2 at position 3, etc.
+                current_position = tgt.size(2)  # Current length of sequence
+                
+                if current_position <= cb_idx:
+                    # Still in delay period - force padding_idx
+                    next_tokens[:, cb_idx] = self.padding_idx
+                else:
+                    # Generate normally
+                    cb_logits = next_token_logits[:, cb_idx, :]  # [batch_size, vocab_size-1]
 
-                # Optional top-k sampling
-                if top_k is not None:
-                    v, _ = torch.topk(cb_logits, min(top_k, cb_logits.size(-1)))
-                    cb_logits = cb_logits.masked_fill(
-                        cb_logits < v[:, [-1]], float("-inf")
-                    )
+                    # Optional top-k sampling
+                    if top_k is not None:
+                        v, _ = torch.topk(cb_logits, min(top_k, cb_logits.size(-1)))
+                        cb_logits = cb_logits.masked_fill(
+                            cb_logits < v[:, [-1]], float("-inf")
+                        )
 
-                # Optional top-p (nucleus) sampling
-                if top_p is not None and top_p < 1.0:
-                    sorted_logits, sorted_indices = torch.sort(
-                        cb_logits, descending=True, dim=-1
-                    )
-                    cumulative_probs = torch.cumsum(
-                        F.softmax(sorted_logits, dim=-1), dim=-1
-                    )
+                    # Optional top-p (nucleus) sampling
+                    if top_p is not None and top_p < 1.0:
+                        sorted_logits, sorted_indices = torch.sort(
+                            cb_logits, descending=True, dim=-1
+                        )
+                        cumulative_probs = torch.cumsum(
+                            F.softmax(sorted_logits, dim=-1), dim=-1
+                        )
 
-                    # Remove tokens with cumulative probability above threshold
-                    sorted_indices_to_remove = cumulative_probs > top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                        ..., :-1
-                    ].clone()
-                    sorted_indices_to_remove[..., 0] = False
+                        # Remove tokens with cumulative probability above threshold
+                        sorted_indices_to_remove = cumulative_probs > top_p
+                        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
+                            ..., :-1
+                        ].clone()
+                        sorted_indices_to_remove[..., 0] = False
 
-                    indices_to_remove = sorted_indices_to_remove.scatter(
-                        1, sorted_indices, sorted_indices_to_remove
-                    )
-                    cb_logits = cb_logits.masked_fill(indices_to_remove, float("-inf"))
+                        indices_to_remove = sorted_indices_to_remove.scatter(
+                            1, sorted_indices, sorted_indices_to_remove
+                        )
+                        cb_logits = cb_logits.masked_fill(indices_to_remove, float("-inf"))
 
-                # Sample next token
-                probs = F.softmax(cb_logits, dim=-1)
-                next_tokens[:, cb_idx] = torch.multinomial(
-                    probs, num_samples=1
-                ).squeeze(-1)
+                    # Sample next token
+                    probs = F.softmax(cb_logits, dim=-1)
+                    next_tokens[:, cb_idx] = torch.multinomial(
+                        probs, num_samples=1
+                    ).squeeze(-1)
 
             # Add next tokens: [batch_size, num_codebooks, 1]
             tgt = torch.cat([tgt, next_tokens.unsqueeze(-1)], dim=-1)
@@ -316,17 +326,17 @@ class EncoderDecoderTransformer(nn.Module):
         src: torch.Tensor,
         max_len: int,
         start_tokens: torch.Tensor,
-        end_token: int,
         src_key_padding_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Greedy generation (deterministic) for multiple codebooks.
+        Automatically handles delayed codebook starts by forcing padding_idx tokens
+        in the appropriate positions.
 
         Args:
             src: [batch_size, num_codebooks, src_seq_len]
             max_len: Maximum generation length
             start_tokens: [batch_size, num_codebooks]
-            end_token: End token ID
             src_key_padding_mask: [batch_size, src_seq_len]
 
         Returns:
@@ -355,7 +365,14 @@ class EncoderDecoderTransformer(nn.Module):
             )
 
             # Greedy selection: [batch_size, num_codebooks]
+            # logits shape: [batch_size, num_codebooks, 1, vocab_size-1]
             next_tokens = logits[:, :, -1, :].argmax(dim=-1)
+            
+            # Force padding_idx for codebooks still in delay period
+            current_position = tgt.size(2)
+            for cb_idx in range(self.num_codebooks):
+                if current_position <= cb_idx:
+                    next_tokens[:, cb_idx] = self.padding_idx
 
             tgt = torch.cat([tgt, next_tokens.unsqueeze(-1)], dim=-1)
 

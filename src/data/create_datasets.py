@@ -35,7 +35,7 @@ def clip_valid_windows(metadata: List[Dict]) -> List[Tuple[Tensor, Tensor]]:
                 timedelta(seconds=start),
                 timedelta(seconds=end),
             )
-            examples.append((lead_audio, backing_audio))
+            examples.append((backing_audio, lead_audio))
     return examples
 
 
@@ -49,8 +49,8 @@ def augment_examples(
         augmented_backings = augmenter(backing_audio)
         new_examples.extend(
             [
-                (lead, backing)
-                for lead, backing in zip(augmented_leads, augmented_backings)
+                (backing, lead)
+                for backing, lead in zip(augmented_backings, augmented_leads)
             ]
         )
     return new_examples
@@ -107,8 +107,8 @@ if __name__ == "__main__":
 
     codes = []
     for backing, lead in tqdm(examples):
-        lead_codes = tokenize(processor, model, lead)
-        backing_codes = tokenize(processor, model, backing)
+        lead_codes = tokenize(lead, processor, model)
+        backing_codes = tokenize(backing, processor, model)
         if lead_codes.shape != backing_codes.shape:
             print("\n\nWARNING: lead and backing codes have different shape")
         codes.append((backing_codes, lead_codes))
