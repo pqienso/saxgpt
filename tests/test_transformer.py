@@ -210,7 +210,7 @@ def test_transformer(model: EncoderDecoderTransformer):
         )
         losses_per_codebook.append(cb_loss.item())
     
-    print(f"Per-codebook losses: {[f'{l:.4f}' for l in losses_per_codebook]}")
+    print(f"Per-codebook losses: {[f'{loss:.4f}' for loss in losses_per_codebook]}")
     print(f"Mean per-codebook loss: {sum(losses_per_codebook) / len(losses_per_codebook):.4f}")
 
 

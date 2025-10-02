@@ -331,8 +331,6 @@ class EncoderDecoderTransformer(nn.Module):
             generated: [batch_size, num_codebooks, generated_len]
         """
         self.eval()
-        batch_size = src.size(0)
-        device = src.device
 
         memory = self.encode(src, src_key_padding_mask=src_key_padding_mask)
         cache = [
