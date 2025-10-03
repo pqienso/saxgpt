@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from torch.optim.lr_scheduler import LRScheduler, ReduceLROnPlateau
 from pathlib import Path
 from typing import Dict, Tuple
@@ -109,7 +109,6 @@ def save_checkpoint(
     metrics: Dict[str, float],
     config: Dict,
     checkpoint_path: Path,
-    is_best: bool = False,
 ):
     """Save training checkpoint."""
     checkpoint = {
@@ -124,15 +123,8 @@ def save_checkpoint(
     if scheduler:
         checkpoint["scheduler_state_dict"] = scheduler.state_dict()
 
-    # Save regular checkpoint
     torch.save(checkpoint, checkpoint_path)
     print(f"Checkpoint saved to {checkpoint_path}")
-
-    # Save best checkpoint
-    if is_best:
-        best_path = checkpoint_path.parent / "best_model.pt"
-        torch.save(checkpoint, best_path)
-        print(f"Best model saved to {best_path}")
 
 
 def load_checkpoint(
@@ -215,7 +207,7 @@ def train_epoch(
 
     optimizer.zero_grad()
 
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch}")
+    pbar = tqdm(dataloader, desc=f"Epoch {epoch + 1}")
 
     for batch_idx, batch in enumerate(pbar):
         # Unpack batch - assuming (src, tgt) format
@@ -225,7 +217,7 @@ def train_epoch(
         tgt = tgt.to(device)
 
         # Use mixed precision
-        with autocast():
+        with autocast("cuda"):
             # Forward pass
             logits = model(src, tgt)  # [B, C, T, V]
 
@@ -261,14 +253,12 @@ def train_epoch(
 
             global_step += 1
 
-            # Log metrics
             # Update learning rate scheduler (if not ReduceLROnPlateau)
             if scheduler and not isinstance(scheduler, ReduceLROnPlateau):
                 scheduler.step()
 
-            # Log learning rate
+            # Log metrics
             current_lr = optimizer.param_groups[0]["lr"]
-
             if global_step % config["training"].get("log_interval", 10) == 0:
                 avg_loss = total_loss / num_batches
                 avg_acc = total_accuracy / num_batches
@@ -326,7 +316,7 @@ def validate(
         src = src.to(device)
         tgt = tgt.to(device)
 
-        with autocast():
+        with autocast("cuda"):
             logits = model(src, tgt)
 
             B, C, T, V = logits.shape
@@ -513,6 +503,23 @@ def train(config_path: str):
             is_best = metrics_tracker.update_best(val_loss)
             if is_best:
                 print("🌟 New best validation loss!")
+                best_path = checkpoint_dir / "best_model.pt"
+                save_checkpoint(
+                    model,
+                    optimizer,
+                    scaler,
+                    scheduler,
+                    epoch,
+                    global_step,
+                    {
+                        "train_loss": train_loss,
+                        "train_accuracy": train_acc,
+                        "val_loss": val_loss,
+                        "val_accuracy": val_acc,
+                    },
+                    config,
+                    best_path,
+                )
 
             # Save checkpoint
             if (epoch + 1) % save_interval == 0:
@@ -532,8 +539,8 @@ def train(config_path: str):
                     },
                     config,
                     checkpoint_path,
-                    is_best,
                 )
+            
 
     except KeyboardInterrupt:
         print("\n\n" + "=" * 80)
@@ -555,7 +562,6 @@ def train(config_path: str):
             },
             config,
             interrupt_path,
-            is_best=False,
         )
         print(f"\nCheckpoint saved to {interrupt_path}")
         print("You can resume training from this checkpoint.")

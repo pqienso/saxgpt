@@ -20,7 +20,7 @@ model:
 
 
 training:
-  num_epochs: 200
+  num_epochs: 300
   # Effective batch size = batch_size * gradient_accumulation_steps
   batch_size: 8
   gradient_accumulation_steps: 4
