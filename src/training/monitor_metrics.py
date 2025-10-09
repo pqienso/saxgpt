@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
 import yaml
+import time
 
 
 def load_metrics(metrics_file: Path) -> pd.DataFrame:
@@ -20,9 +21,16 @@ def load_metrics(metrics_file: Path) -> pd.DataFrame:
     return pd.DataFrame(metrics)
 
 
-def plot_metrics(df: pd.DataFrame, output_path: str = None):
+def plot_metrics(df: pd.DataFrame, output_path: str = None, fig=None, axes=None):
     """Plot training metrics."""
-    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    # Create new figure if not provided (for static plotting)
+    if fig is None or axes is None:
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    else:
+        # Clear existing plots for live updates
+        for ax in axes.flat:
+            ax.clear()
+    
     fig.suptitle("Training Metrics", fontsize=16)
 
     # Filter epoch-level metrics
@@ -51,7 +59,9 @@ def plot_metrics(df: pd.DataFrame, output_path: str = None):
             label="Train Loss",
         )
         axes[0, 1].plot(
-            epoch_df["epoch"], epoch_df["epoch_val_loss"], label="Val Loss"
+            epoch_df["epoch"],
+            epoch_df["epoch_val_loss"],
+            label="Val Loss"
         )
         axes[0, 1].set_xlabel("Epoch")
         axes[0, 1].set_ylabel("Loss")
@@ -97,8 +107,8 @@ def plot_metrics(df: pd.DataFrame, output_path: str = None):
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches="tight")
         print(f"Plot saved to {output_path}")
-    else:
-        plt.show()
+    
+    return fig, axes
 
 
 def print_summary(df: pd.DataFrame):
@@ -152,7 +162,6 @@ def print_summary(df: pd.DataFrame):
 
 def watch_metrics(metrics_file: Path, interval: int = 10):
     """Watch metrics file and update display periodically."""
-    import time
     from IPython.display import clear_output
 
     print(f"Watching {str(metrics_file)} (updating every {interval}s)")
@@ -173,6 +182,35 @@ def watch_metrics(metrics_file: Path, interval: int = 10):
         print("\nStopped watching.")
 
 
+def live_plot(metrics_file: Path, interval: int = 10, output_path: str = None):
+    """Continuously update plots as training progresses."""
+    print(f"Live plotting from {str(metrics_file)} (updating every {interval}s)")
+    print("Close the plot window to stop\n")
+    
+    # Enable interactive mode
+    plt.ion()
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+    
+    try:
+        while plt.fignum_exists(fig.number):
+            if metrics_file.exists():
+                df = load_metrics(metrics_file)
+                plot_metrics(df, output_path=output_path, fig=fig, axes=axes)
+                plt.pause(interval)
+                
+                # Print summary to console
+                print(f"\rLast updated: {pd.Timestamp.now().strftime('%H:%M:%S')}", end='', flush=True)
+            else:
+                print(f"\rWaiting for {str(metrics_file)} to be created...", end='', flush=True)
+                time.sleep(interval)
+                
+    except KeyboardInterrupt:
+        print("\n\nStopped live plotting.")
+    finally:
+        plt.ioff()
+        plt.show()
+
+
 if __name__ == "__main__":
     matplotlib.use('QtAgg') 
     parser = argparse.ArgumentParser(description="Monitor training metrics")
@@ -190,24 +228,30 @@ if __name__ == "__main__":
     )
     parser.add_argument("--plot", action="store_true", help="Generate plots")
     parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Live plotting mode (continuously update plots)",
+    )
+    parser.add_argument(
         "--output",
         type=str,
         default=None,
-        help="Output path for plot (default: show plot)",
+        help="Output path for plot (saves periodically in live mode)",
     )
     parser.add_argument(
         "--watch",
         action="store_true",
-        help="Watch metrics file and update periodically",
+        help="Watch metrics file and update text summary periodically",
     )
     parser.add_argument(
         "--interval",
         type=int,
         default=10,
-        help="Update interval in seconds for watch mode",
+        help="Update interval in seconds for watch/live mode",
     )
 
     args = parser.parse_args()
+    
     if args.metrics:
         metrics_path = Path(args.metrics)
     elif args.config:
@@ -217,9 +261,14 @@ if __name__ == "__main__":
     else:
         raise ValueError("Please specify either training config or metrics path")
 
-    if args.watch:
+    if args.live:
+        # Live plotting mode
+        live_plot(metrics_path, args.interval, args.output)
+    elif args.watch:
+        # Text-only watch mode
         watch_metrics(metrics_path, args.interval)
     else:
+        # Static mode
         if not metrics_path.exists():
             print(f"Error: Metrics file not found: {str(metrics_path)}")
             exit(1)
@@ -229,3 +278,6 @@ if __name__ == "__main__":
 
         if args.plot:
             plot_metrics(df, args.output)
+            if not args.output:
+                plt.show()
+
