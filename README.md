@@ -13,8 +13,6 @@ Having difficulties finding public datasets for something as niche as jazz music
 
 ### Model architecture
 
-The model would be a custom encoder-decoder transformer model, as it is solving a sequence-to-sequence problem. The encoder sequence would be the tokenized audio of the backing track, while the sequence that the decoder produces would be the tokenized audio of the saxophone instrumental.
-
-The number of attention heads, number of layers and embedding dimensions for encoder/decoder are all hyperparameters that will have to be experimented with.
+The model is a custom encoder-decoder transformer model with KV caching. The encoder sequence would be the tokenized audio of the backing track, while the sequence that the decoder produces would be the tokenized audio of the saxophone instrumental.
 
 The only notable difference in architecture between this and any standard encoder-decoder would be the presence of multiple (4) parallel streams of tokens instead of just 1. Thus, taking inspiration again from MusicGen, each stream will have its own embedding layer. These embeddings will be summed before being passed on to the rest of the network. At the final layer, there will be 4 fully connected layers in parallel to produce the logits for the 4 token streams.
