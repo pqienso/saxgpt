@@ -5,11 +5,11 @@ data:
 model:
   vocab_size: 2049
   num_codebooks: 4
-  d_model: 128
-  nhead: 8
-  num_encoder_layers: 8
-  num_decoder_layers: 8
-  dim_feedforward: 512
+  d_model: 256
+  nhead: 16
+  num_encoder_layers: 16
+  num_decoder_layers: 16
+  dim_feedforward: 1024
   dropout: 0.1
   activation: "relu"         
   norm_first: false          
@@ -19,10 +19,10 @@ model:
 
 
 training:
-  num_epochs: 500
+  num_epochs: 1000
   # Effective batch size = batch_size * gradient_accumulation_steps
-  batch_size: 8
-  gradient_accumulation_steps: 4
+  batch_size: 2
+  gradient_accumulation_steps: 16
   
   # Learning rate scheduler
   scheduler:
@@ -42,16 +42,16 @@ training:
   # Optimizer
   optimizer:
     type: "adamw"
-    lr: 0.001 
+    lr: 0.0001 
     betas: [0.9, 0.98]
     eps: 1.0e-9
     weight_decay: 0.01
   
   # Logging and checkpointing
-  output_dir: "models/small"
+  output_dir: "models/medium"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "models/small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "models/medium/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
