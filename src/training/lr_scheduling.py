@@ -20,11 +20,7 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
 
 def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, min_lr=0):
     """Cosine warmup then cosine decay."""
-    def lr_lambda(
-        current_step,
-        num_warmup_steps=num_warmup_steps,
-        num_training_steps=num_training_steps
-    ):
+    def lr_lambda(current_step):
         if current_step < num_warmup_steps:
             return float(current_step) / float(max(1, num_warmup_steps))
         progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
