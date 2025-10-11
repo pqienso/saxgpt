@@ -42,58 +42,50 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
         self.dropout_p = dropout
         self.scale = math.sqrt(self.d_k)
 
-    def _prepare_flash_attention_mask(
+    def _combine_masks(
         self,
         batch_size: int,
         seq_len: int,
         kv_len: int,
         key_padding_mask: Optional[torch.Tensor],
         attn_mask: Optional[torch.Tensor],
+        is_causal: bool,
         device: torch.device,
-        dtype: torch.dtype,
     ) -> Optional[torch.Tensor]:
         """
-        Convert masks to Flash Attention format (additive float mask).
-
+        Combine all masks into a single boolean mask.
+        
         Returns:
-            Combined mask [batch, 1, seq_len, kv_len] or None
+            Combined boolean mask [batch, seq_len, kv_len] where True = mask out, or None
         """
         combined_mask = None
 
-        # Handle key padding mask
-        if key_padding_mask is not None:
-            # key_padding_mask: [batch, kv_len], True = padding
-            # Convert to [batch, 1, 1, kv_len]
-            combined_mask = torch.zeros(
-                (batch_size, 1, 1, kv_len), dtype=dtype, device=device
-            )
-            combined_mask.masked_fill_(
-                key_padding_mask.unsqueeze(1).unsqueeze(2), float("-inf")
-            )
-
-        # Handle attention mask
         if attn_mask is not None:
-            attn_mask_float = torch.zeros(
-                (1, 1, seq_len, kv_len), dtype=dtype, device=device
-            )
-
             if attn_mask.dim() == 2:
-                # [seq_len, kv_len] -> [1, 1, seq_len, kv_len]
-                attn_mask_float.masked_fill_(
-                    attn_mask.unsqueeze(0).unsqueeze(0), float("-inf")
-                )
-            elif attn_mask.dim() == 3:
-                # [batch, seq_len, kv_len] -> [batch, 1, seq_len, kv_len]
-                attn_mask_float = torch.zeros(
-                    (batch_size, 1, seq_len, kv_len), dtype=dtype, device=device
-                )
-                attn_mask_float.masked_fill_(attn_mask.unsqueeze(1), float("-inf"))
-
-            # Combine with key padding mask
-            if combined_mask is None:
-                combined_mask = attn_mask_float
+                # [seq_len, kv_len] -> [batch, seq_len, kv_len]
+                combined_mask = attn_mask.unsqueeze(0).expand(batch_size, -1, -1)
             else:
-                combined_mask = combined_mask + attn_mask_float
+                # [batch, seq_len, kv_len]
+                combined_mask = attn_mask.clone()
+
+        if is_causal:
+            causal_mask = torch.triu(
+                torch.ones(seq_len, kv_len, device=device, dtype=torch.bool),
+                diagonal=1,
+            )
+            if combined_mask is None:
+                combined_mask = causal_mask.unsqueeze(0).expand(batch_size, -1, -1)
+            else:
+                combined_mask = combined_mask | causal_mask.unsqueeze(0)
+
+        # Add key padding mask
+        if key_padding_mask is not None:
+            # [batch, kv_len] -> [batch, 1, kv_len]
+            padding_mask = key_padding_mask.unsqueeze(1)
+            if combined_mask is None:
+                combined_mask = padding_mask.expand(-1, seq_len, -1)
+            else:
+                combined_mask = combined_mask | padding_mask
 
         return combined_mask
 
@@ -109,7 +101,7 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
         """
         Args:
             x: [batch_size, seq_len, d_model]
-            attn_mask: Boolean mask [seq_len, seq_len] or [batch, seq_len, seq_len]
+            attn_mask: Boolean mask [seq_len, kv_len] or [batch, seq_len, kv_len]
                       True indicates positions to mask (set to -inf)
             key_padding_mask: [batch_size, kv_len] - True for padding positions
             cache: CacheEntry with cached K, V tensors
@@ -141,101 +133,61 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
 
         kv_len = K.size(2)
 
-        can_use_flash = self.use_flash
-        # Special case: is_causal can only be used without cache and without custom masks
-        use_is_causal = is_causal and cache is None and attn_mask is None
+        # Determine if we can use the is_causal flag directly
+        use_is_causal_flag = (
+            is_causal and cache is None and attn_mask is None and key_padding_mask is None
+        )
 
-        if can_use_flash:
-            # Prepare mask in Flash Attention format (additive)
-            if use_is_causal:
+        if self.use_flash:
+            if use_is_causal_flag:
                 # Let Flash Attention handle causal masking efficiently
-                flash_mask = None
-                if key_padding_mask is not None:
-                    flash_mask = self._prepare_flash_attention_mask(
-                        batch_size,
-                        seq_len,
-                        kv_len,
-                        key_padding_mask,
-                        None,
-                        x.device,
-                        Q.dtype,
-                    )
-
                 context = F.scaled_dot_product_attention(
                     Q,
                     K,
                     V,
-                    attn_mask=flash_mask,
+                    attn_mask=None,
                     dropout_p=self.dropout_p if self.training else 0.0,
                     is_causal=True,
                 )
             else:
-                # Handle all masks manually (but still use Flash Attention!)
-                flash_mask = self._prepare_flash_attention_mask(
+                # Combine all masks into a single boolean mask
+                combined_mask = self._combine_masks(
                     batch_size,
                     seq_len,
                     kv_len,
                     key_padding_mask,
                     attn_mask,
+                    is_causal and cache is None,
                     x.device,
-                    Q.dtype,
                 )
-
-                # Add causal mask if needed (when we can't use is_causal flag)
-                if is_causal and cache is None and flash_mask is None:
-                    # Create causal mask
-                    flash_mask = torch.zeros(
-                        (1, 1, seq_len, kv_len), dtype=Q.dtype, device=x.device
-                    )
-                    causal_mask = torch.triu(
-                        torch.ones(seq_len, kv_len, device=x.device, dtype=torch.bool),
-                        diagonal=1,
-                    )
-                    flash_mask.masked_fill_(causal_mask, float("-inf"))
-                elif is_causal and cache is None and flash_mask is not None:
-                    # Add causal mask to existing mask
-                    causal_mask = torch.triu(
-                        torch.ones(seq_len, kv_len, device=x.device, dtype=torch.bool),
-                        diagonal=1,
-                    )
-                    flash_mask = flash_mask.masked_fill(causal_mask, float("-inf"))
 
                 context = F.scaled_dot_product_attention(
                     Q,
                     K,
                     V,
-                    attn_mask=flash_mask,
+                    attn_mask=combined_mask,
                     dropout_p=self.dropout_p if self.training else 0.0,
-                    is_causal=False,  # We handle causal in the mask
+                    is_causal=False,
                 )
         else:
             # Manual attention computation (fallback)
             scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
             # scores: [batch, nhead, seq_len, kv_len]
 
-            # Apply attention mask (boolean mask: True = mask out)
-            if attn_mask is not None:
-                if attn_mask.dim() == 2:
-                    # [seq_len, kv_len] -> [1, 1, seq_len, kv_len]
-                    attn_mask = attn_mask.unsqueeze(0).unsqueeze(0)
-                elif attn_mask.dim() == 3:
-                    # [batch, seq_len, kv_len] -> [batch, 1, seq_len, kv_len]
-                    attn_mask = attn_mask.unsqueeze(1)
-                scores = scores.masked_fill(attn_mask, float("-inf"))
+            # Combine masks
+            combined_mask = self._combine_masks(
+                batch_size,
+                seq_len,
+                kv_len,
+                key_padding_mask,
+                attn_mask,
+                is_causal and cache is None,
+                x.device,
+            )
 
-            # Apply causal mask if needed
-            if is_causal and cache is None:
-                causal_mask = torch.triu(
-                    torch.ones(seq_len, kv_len, device=x.device, dtype=torch.bool),
-                    diagonal=1,
-                )
-                scores = scores.masked_fill(causal_mask, float("-inf"))
-
-            # Apply key padding mask
-            if key_padding_mask is not None:
-                # [batch, kv_len] -> [batch, 1, 1, kv_len]
-                key_padding_mask = key_padding_mask.unsqueeze(1).unsqueeze(2)
-                scores = scores.masked_fill(key_padding_mask, float("-inf"))
+            if combined_mask is not None:
+                # [batch, seq_len, kv_len] -> [batch, 1, seq_len, kv_len]
+                scores = scores.masked_fill(combined_mask.unsqueeze(1), float("-inf"))
 
             attn_weights = F.softmax(scores, dim=-1)
             attn_weights = self.dropout(attn_weights)
@@ -292,7 +244,7 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         self.dropout_p = dropout
         self.scale = math.sqrt(self.d_k)
 
-    def _prepare_flash_attention_mask(
+    def _combine_masks(
         self,
         batch_size: int,
         tgt_len: int,
@@ -300,50 +252,32 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         key_padding_mask: Optional[torch.Tensor],
         attn_mask: Optional[torch.Tensor],
         device: torch.device,
-        dtype: torch.dtype,
     ) -> Optional[torch.Tensor]:
         """
-        Convert masks to Flash Attention format (additive float mask).
-
+        Combine all masks into a single boolean mask.
+        
         Returns:
-            Combined mask [batch, 1, tgt_len, src_len] or None
+            Combined boolean mask [batch, tgt_len, src_len] where True = mask out, or None
         """
         combined_mask = None
 
-        # Handle key padding mask
-        if key_padding_mask is not None:
-            # key_padding_mask: [batch, src_len], True = padding
-            # Convert to [batch, 1, 1, src_len]
-            combined_mask = torch.zeros(
-                (batch_size, 1, 1, src_len), dtype=dtype, device=device
-            )
-            combined_mask.masked_fill_(
-                key_padding_mask.unsqueeze(1).unsqueeze(2), float("-inf")
-            )
-
-        # Handle attention mask
+        # Start with attention mask
         if attn_mask is not None:
-            attn_mask_float = torch.zeros(
-                (1, 1, tgt_len, src_len), dtype=dtype, device=device
-            )
-
             if attn_mask.dim() == 2:
-                # [tgt_len, src_len] -> [1, 1, tgt_len, src_len]
-                attn_mask_float.masked_fill_(
-                    attn_mask.unsqueeze(0).unsqueeze(0), float("-inf")
-                )
-            elif attn_mask.dim() == 3:
-                # [batch, tgt_len, src_len] -> [batch, 1, tgt_len, src_len]
-                attn_mask_float = torch.zeros(
-                    (batch_size, 1, tgt_len, src_len), dtype=dtype, device=device
-                )
-                attn_mask_float.masked_fill_(attn_mask.unsqueeze(1), float("-inf"))
-
-            # Combine with key padding mask
-            if combined_mask is None:
-                combined_mask = attn_mask_float
+                # [tgt_len, src_len] -> [batch, tgt_len, src_len]
+                combined_mask = attn_mask.unsqueeze(0).expand(batch_size, -1, -1)
             else:
-                combined_mask = combined_mask + attn_mask_float
+                # Already [batch, tgt_len, src_len]
+                combined_mask = attn_mask.clone()
+
+        # Add key padding mask
+        if key_padding_mask is not None:
+            # [batch, src_len] -> [batch, 1, src_len]
+            padding_mask = key_padding_mask.unsqueeze(1)
+            if combined_mask is None:
+                combined_mask = padding_mask.expand(-1, tgt_len, -1)
+            else:
+                combined_mask = combined_mask | padding_mask
 
         return combined_mask
 
@@ -391,22 +325,16 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         Q = Q.view(batch_size, tgt_len, self.nhead, self.d_k).transpose(1, 2)
 
         if self.use_flash:
-            # Prepare mask in Flash Attention format
-            flash_mask = self._prepare_flash_attention_mask(
-                batch_size,
-                tgt_len,
-                src_len,
-                key_padding_mask,
-                attn_mask,
-                query.device,
-                Q.dtype,
+            # Combine masks into a single boolean mask
+            combined_mask = self._combine_masks(
+                batch_size, tgt_len, src_len, key_padding_mask, attn_mask, query.device
             )
 
             context = F.scaled_dot_product_attention(
                 Q,
                 K,
                 V,
-                attn_mask=flash_mask,
+                attn_mask=combined_mask,
                 dropout_p=self.dropout_p if self.training else 0.0,
                 is_causal=False,  # Cross-attention is never causal
             )
@@ -414,17 +342,14 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
             # Manual attention computation
             scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
 
-            # Apply masks
-            if attn_mask is not None:
-                if attn_mask.dim() == 2:
-                    attn_mask = attn_mask.unsqueeze(0).unsqueeze(0)
-                elif attn_mask.dim() == 3:
-                    attn_mask = attn_mask.unsqueeze(1)
-                scores = scores.masked_fill(attn_mask, float("-inf"))
+            # Combine masks
+            combined_mask = self._combine_masks(
+                batch_size, tgt_len, src_len, key_padding_mask, attn_mask, query.device
+            )
 
-            if key_padding_mask is not None:
-                key_padding_mask = key_padding_mask.unsqueeze(1).unsqueeze(2)
-                scores = scores.masked_fill(key_padding_mask, float("-inf"))
+            if combined_mask is not None:
+                # [batch, tgt_len, src_len] -> [batch, 1, tgt_len, src_len]
+                scores = scores.masked_fill(combined_mask.unsqueeze(1), float("-inf"))
 
             attn_weights = F.softmax(scores, dim=-1)
             attn_weights = self.dropout(attn_weights)
