@@ -50,7 +50,7 @@ class TransformerDecoderLayer(nn.Module):
         tgt_key_padding_mask: Optional[torch.Tensor] = None,
         memory_key_padding_mask: Optional[torch.Tensor] = None,
         cache: Optional[Dict[str, CacheEntry]] = None,
-        use_cache: bool = False,
+        return_cache: bool = False,
         is_causal: bool = False,
     ) -> Tuple[torch.Tensor, Dict[str, CacheEntry]]:
         """
@@ -58,7 +58,7 @@ class TransformerDecoderLayer(nn.Module):
             tgt: [batch_size, tgt_seq_len, d_model]
             memory: [batch_size, src_seq_len, d_model] - encoder output
             cache: Dict with 'self_attn' and 'cross_attn' keys
-            use_cache: Whether to return updated cache
+            return_cache: Whether to return updated cache
             is_causal: Apply causal masking for self-attention
         
         Returns:
@@ -76,7 +76,7 @@ class TransformerDecoderLayer(nn.Module):
                 attn_mask=tgt_mask,
                 key_padding_mask=tgt_key_padding_mask,
                 cache=self_attn_cache,
-                use_cache=use_cache,
+                return_cache=return_cache,
                 is_causal=is_causal,
             )
             tgt = tgt + self.dropout1(tgt2)
@@ -87,7 +87,7 @@ class TransformerDecoderLayer(nn.Module):
                 attn_mask=memory_mask,
                 key_padding_mask=memory_key_padding_mask,
                 cache=cross_attn_cache,
-                use_cache=use_cache
+                return_cache=return_cache
             )
             tgt = tgt + self.dropout2(tgt2)
             
@@ -101,7 +101,7 @@ class TransformerDecoderLayer(nn.Module):
                 attn_mask=tgt_mask,
                 key_padding_mask=tgt_key_padding_mask,
                 cache=self_attn_cache,
-                use_cache=use_cache,
+                return_cache=return_cache,
                 is_causal=is_causal,
             )
             tgt = self.norm1(tgt + self.dropout1(tgt2))
@@ -112,7 +112,7 @@ class TransformerDecoderLayer(nn.Module):
                 attn_mask=memory_mask,
                 key_padding_mask=memory_key_padding_mask,
                 cache=cross_attn_cache,
-                use_cache=use_cache
+                return_cache=return_cache
             )
             tgt = self.norm2(tgt + self.dropout2(tgt2))
             
@@ -122,7 +122,7 @@ class TransformerDecoderLayer(nn.Module):
         
         # Prepare new cache
         new_cache = {}
-        if use_cache:
+        if return_cache:
             new_cache['self_attn'] = new_self_attn_cache
             new_cache['cross_attn'] = new_cross_attn_cache
         
@@ -160,13 +160,13 @@ class TransformerDecoder(nn.Module):
         tgt_key_padding_mask: Optional[torch.Tensor] = None,
         memory_key_padding_mask: Optional[torch.Tensor] = None,
         cache: Optional[List[Dict[str, CacheEntry]]] = None,
-        use_cache: bool = False,
+        return_cache: bool = False,
         is_causal: bool = False,
     ) -> Tuple[torch.Tensor, List[Dict[str, CacheEntry]]]:
         """
         Args:
             cache: List of cache dicts, one per layer
-            use_cache: Whether to return updated caches
+            return_cache: Whether to return updated caches
             is_causal: Apply causal masking for autoregressive decoding
         
         Returns:
@@ -184,7 +184,7 @@ class TransformerDecoder(nn.Module):
                 tgt_key_padding_mask=tgt_key_padding_mask,
                 memory_key_padding_mask=memory_key_padding_mask,
                 cache=layer_cache,
-                use_cache=use_cache,
+                return_cache=return_cache,
                 is_causal=is_causal,
             )
             new_cache_list.append(new_cache)

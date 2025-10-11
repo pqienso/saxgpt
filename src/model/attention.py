@@ -15,6 +15,62 @@ class CacheEntry:
     seq_len: int  # Track sequence length for PE offset
 
 
+def _combine_masks(
+    batch_size: int,
+    seq_len: int,
+    kv_len: int,
+    key_padding_mask: Optional[torch.Tensor],
+    attn_mask: Optional[torch.Tensor],
+    is_causal: bool,
+    device: torch.device,
+) -> Optional[torch.Tensor]:
+    """
+    Combine all masks into a single boolean mask.
+
+    Returns:
+        Combined boolean mask [batch, seq_len, kv_len] where False = mask out, or None
+    """
+    combined_mask = None
+
+    if attn_mask is not None:
+        if attn_mask.dim() == 2:
+            assert attn_mask.shape == (seq_len, kv_len)
+            # [seq_len, kv_len] -> [batch, seq_len, kv_len]
+            combined_mask = attn_mask.unsqueeze(0).expand(batch_size, -1, -1)
+        else:
+            assert attn_mask.shape == (batch_size, seq_len, kv_len)
+            # [batch, seq_len, kv_len]
+            combined_mask = attn_mask.clone()
+
+    if is_causal and seq_len != 1: # Causal masking for non-cached cases
+        assert seq_len == kv_len
+        causal_mask = torch.triu(
+            torch.ones(seq_len, kv_len, device=device, dtype=torch.bool),
+            diagonal=1,
+        )
+        if combined_mask is None:
+            combined_mask = causal_mask.unsqueeze(0).expand(batch_size, -1, -1)
+        else:
+            combined_mask = combined_mask | causal_mask.unsqueeze(0)
+
+    # Add key padding mask
+    if key_padding_mask is not None:
+        assert key_padding_mask.shape == (batch_size, kv_len)
+        # [batch, kv_len] -> [batch, 1, kv_len]
+        padding_mask = key_padding_mask.unsqueeze(1)
+        # [batch, 1, kv_len] -> [batch, seq_len, kv_len]
+        if combined_mask is None:
+            combined_mask = padding_mask.expand(-1, seq_len, -1)
+        else:
+            combined_mask = combined_mask | padding_mask
+
+    if combined_mask is None:
+        return None
+
+    # print(f"DEBUG: combined_mask: {combined_mask.shape}")
+    return combined_mask.logical_not()
+
+
 class MultiHeadSelfAttentionWithCache(nn.Module):
     """Multi-head self-attention with batched QKV projections and efficient KV-caching."""
 
@@ -42,60 +98,13 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
         self.dropout_p = dropout
         self.scale = math.sqrt(self.d_k)
 
-    def _combine_masks(
-        self,
-        batch_size: int,
-        seq_len: int,
-        kv_len: int,
-        key_padding_mask: Optional[torch.Tensor],
-        attn_mask: Optional[torch.Tensor],
-        is_causal: bool,
-        device: torch.device,
-    ) -> Optional[torch.Tensor]:
-        """
-        Combine all masks into a single boolean mask.
-        
-        Returns:
-            Combined boolean mask [batch, seq_len, kv_len] where True = mask out, or None
-        """
-        combined_mask = None
-
-        if attn_mask is not None:
-            if attn_mask.dim() == 2:
-                # [seq_len, kv_len] -> [batch, seq_len, kv_len]
-                combined_mask = attn_mask.unsqueeze(0).expand(batch_size, -1, -1)
-            else:
-                # [batch, seq_len, kv_len]
-                combined_mask = attn_mask.clone()
-
-        if is_causal:
-            causal_mask = torch.triu(
-                torch.ones(seq_len, kv_len, device=device, dtype=torch.bool),
-                diagonal=1,
-            )
-            if combined_mask is None:
-                combined_mask = causal_mask.unsqueeze(0).expand(batch_size, -1, -1)
-            else:
-                combined_mask = combined_mask | causal_mask.unsqueeze(0)
-
-        # Add key padding mask
-        if key_padding_mask is not None:
-            # [batch, kv_len] -> [batch, 1, kv_len]
-            padding_mask = key_padding_mask.unsqueeze(1)
-            if combined_mask is None:
-                combined_mask = padding_mask.expand(-1, seq_len, -1)
-            else:
-                combined_mask = combined_mask | padding_mask
-
-        return combined_mask
-
     def forward(
         self,
         x: torch.Tensor,
         attn_mask: Optional[torch.Tensor] = None,
         key_padding_mask: Optional[torch.Tensor] = None,
         cache: Optional[CacheEntry] = None,
-        use_cache: bool = False,
+        return_cache: bool = False,
         is_causal: bool = False,
     ) -> Tuple[torch.Tensor, Optional[CacheEntry]]:
         """
@@ -105,12 +114,12 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
                       True indicates positions to mask (set to -inf)
             key_padding_mask: [batch_size, kv_len] - True for padding positions
             cache: CacheEntry with cached K, V tensors
-            use_cache: Whether to return cache for next step
+            return_cache: Whether to return cache for next step
             is_causal: Whether to apply causal masking (for autoregressive)
 
         Returns:
             output: [batch_size, seq_len, d_model]
-            new_cache: CacheEntry with updated K, V tensors (if use_cache=True)
+            new_cache: CacheEntry with updated K, V tensors (if return_cache=True)
         """
         batch_size, seq_len, _ = x.shape
 
@@ -133,12 +142,31 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
 
         kv_len = K.size(2)
 
-        # Determine if we can use the is_causal flag directly
-        use_is_causal_flag = (
-            is_causal and cache is None and attn_mask is None and key_padding_mask is None
+        # Combine all masks into a single boolean mask
+        combined_mask = _combine_masks(
+            batch_size,
+            seq_len,
+            kv_len,
+            key_padding_mask,
+            attn_mask,
+            is_causal,
+            x.device,
         )
+        if combined_mask is not None:
+            combined_mask = combined_mask.unsqueeze(1)  # add n_heads dim
 
         if self.use_flash:
+            # print(
+            #     f"\n\nDEBUG: self_attn forward call, is_causal is {is_causal}\nDEBUG: Padding mask is {key_padding_mask}, attn mask is {attn_mask}"
+            # )
+            # print(f"DEBUG, Q: {Q.shape}, K: {K.shape}, V: {V.shape}")
+            # Determine if we can use the is_causal flag directly
+            use_is_causal_flag = (
+                is_causal
+                and cache is None
+                and attn_mask is None
+                and key_padding_mask is None
+            )
             if use_is_causal_flag:
                 # Let Flash Attention handle causal masking efficiently
                 context = F.scaled_dot_product_attention(
@@ -150,17 +178,6 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
                     is_causal=True,
                 )
             else:
-                # Combine all masks into a single boolean mask
-                combined_mask = self._combine_masks(
-                    batch_size,
-                    seq_len,
-                    kv_len,
-                    key_padding_mask,
-                    attn_mask,
-                    is_causal and cache is None,
-                    x.device,
-                )
-
                 context = F.scaled_dot_product_attention(
                     Q,
                     K,
@@ -170,20 +187,10 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
                     is_causal=False,
                 )
         else:
+            raise ValueError("debug, flash only")
             # Manual attention computation (fallback)
             scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
             # scores: [batch, nhead, seq_len, kv_len]
-
-            # Combine masks
-            combined_mask = self._combine_masks(
-                batch_size,
-                seq_len,
-                kv_len,
-                key_padding_mask,
-                attn_mask,
-                is_causal and cache is None,
-                x.device,
-            )
 
             if combined_mask is not None:
                 # [batch, seq_len, kv_len] -> [batch, 1, seq_len, kv_len]
@@ -206,7 +213,7 @@ class MultiHeadSelfAttentionWithCache(nn.Module):
 
         # Prepare cache for next step (store in head-split format)
         new_cache = None
-        if use_cache:
+        if return_cache:
             new_cache = CacheEntry(
                 k=K.contiguous(),  # [batch, nhead, kv_len, d_k]
                 v=V.contiguous(),
@@ -244,43 +251,6 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         self.dropout_p = dropout
         self.scale = math.sqrt(self.d_k)
 
-    def _combine_masks(
-        self,
-        batch_size: int,
-        tgt_len: int,
-        src_len: int,
-        key_padding_mask: Optional[torch.Tensor],
-        attn_mask: Optional[torch.Tensor],
-        device: torch.device,
-    ) -> Optional[torch.Tensor]:
-        """
-        Combine all masks into a single boolean mask.
-        
-        Returns:
-            Combined boolean mask [batch, tgt_len, src_len] where True = mask out, or None
-        """
-        combined_mask = None
-
-        # Start with attention mask
-        if attn_mask is not None:
-            if attn_mask.dim() == 2:
-                # [tgt_len, src_len] -> [batch, tgt_len, src_len]
-                combined_mask = attn_mask.unsqueeze(0).expand(batch_size, -1, -1)
-            else:
-                # Already [batch, tgt_len, src_len]
-                combined_mask = attn_mask.clone()
-
-        # Add key padding mask
-        if key_padding_mask is not None:
-            # [batch, src_len] -> [batch, 1, src_len]
-            padding_mask = key_padding_mask.unsqueeze(1)
-            if combined_mask is None:
-                combined_mask = padding_mask.expand(-1, tgt_len, -1)
-            else:
-                combined_mask = combined_mask | padding_mask
-
-        return combined_mask
-
     def forward(
         self,
         query: torch.Tensor,
@@ -288,7 +258,7 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         attn_mask: Optional[torch.Tensor] = None,
         key_padding_mask: Optional[torch.Tensor] = None,
         cache: Optional[CacheEntry] = None,
-        use_cache: bool = False,
+        return_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[CacheEntry]]:
         """
         Args:
@@ -297,12 +267,13 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
             attn_mask: Boolean mask
             key_padding_mask: [batch_size, src_seq_len] - True for padding positions
             cache: CacheEntry with cached K, V from encoder
-            use_cache: Whether to return cache
+            return_cache: Whether to return cache
 
         Returns:
             output: [batch_size, tgt_seq_len, d_model]
-            new_cache: CacheEntry with K, V tensors (if use_cache=True)
+            new_cache: CacheEntry with K, V tensors (if return_cache=True)
         """
+        # print("\n\nDEBUG: cross_attn forward call")
         batch_size, tgt_len, _ = query.shape
 
         Q = self.w_q(query)  # [batch, tgt_len, d_model]
@@ -324,17 +295,24 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         # Reshape Q
         Q = Q.view(batch_size, tgt_len, self.nhead, self.d_k).transpose(1, 2)
 
-        if self.use_flash:
-            # Combine masks into a single boolean mask
-            combined_mask = self._combine_masks(
-                batch_size, tgt_len, src_len, key_padding_mask, attn_mask, query.device
-            )
+        combined_mask = _combine_masks(
+            batch_size,
+            tgt_len,
+            src_len,
+            key_padding_mask,
+            attn_mask,
+            is_causal=False,
+            device=query.device,
+        )
+        if combined_mask is not None:
+            combined_mask = combined_mask.unsqueeze(1)  # add n_heads dimension
 
+        if self.use_flash:
             context = F.scaled_dot_product_attention(
                 Q,
                 K,
                 V,
-                attn_mask=combined_mask,
+                attn_mask=combined_mask,  # False = mask out
                 dropout_p=self.dropout_p if self.training else 0.0,
                 is_causal=False,  # Cross-attention is never causal
             )
@@ -342,14 +320,11 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
             # Manual attention computation
             scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
 
-            # Combine masks
-            combined_mask = self._combine_masks(
-                batch_size, tgt_len, src_len, key_padding_mask, attn_mask, query.device
-            )
-
             if combined_mask is not None:
                 # [batch, tgt_len, src_len] -> [batch, 1, tgt_len, src_len]
-                scores = scores.masked_fill(combined_mask.unsqueeze(1), float("-inf"))
+                scores = scores.masked_fill(
+                    combined_mask.logical_not().unsqueeze(1), float("-inf")
+                )
 
             attn_weights = F.softmax(scores, dim=-1)
             attn_weights = self.dropout(attn_weights)
@@ -363,7 +338,7 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
 
         # Cache K, V in head-split format
         new_cache = None
-        if use_cache:
+        if return_cache:
             new_cache = CacheEntry(k=K.contiguous(), v=V.contiguous(), seq_len=src_len)
 
         return output, new_cache

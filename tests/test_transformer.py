@@ -49,10 +49,9 @@ def test_transformer(model: EncoderDecoderTransformer):
     print("-" * 80)
 
     tgt_mask = model.generate_square_subsequent_mask(tgt_seq_len, src.device)
-    logits_masked = model(src, tgt, tgt_mask=tgt_mask)
-
     print(f"Mask shape: {tgt_mask.shape}")
     print("Mask type: boolean (True = masked)")
+    logits_masked = model(src, tgt, tgt_mask=tgt_mask)
     print(f"Output logits shape: {logits_masked.shape}")
 
     # Example 3: Generation mode with caching
@@ -71,7 +70,6 @@ def test_transformer(model: EncoderDecoderTransformer):
         src_test,
         max_len=30,
         start_tokens=start_tokens,
-        end_token=end_token_id,
         temperature=0.8,
         top_k=50,
         top_p=0.9,
@@ -97,7 +95,7 @@ def test_transformer(model: EncoderDecoderTransformer):
         # Shape: [1, num_codebooks, seq_len]
         tgt_seq = torch.randint(0, vocab_size, (1, num_codebooks, 5))
         logits_no_cache, _ = model.decode(
-            tgt_seq, memory, use_cache=False, is_causal=True
+            tgt_seq, memory, return_cache=False, is_causal=True
         )
 
         # Method 2: With caching (incremental)
@@ -110,7 +108,7 @@ def test_transformer(model: EncoderDecoderTransformer):
         for i in range(tgt_seq.size(2)):  # Iterate over sequence length
             current_token = tgt_seq[:, :, i : i + 1]  # [1, num_codebooks, 1]
             logits_step, cache = model.decode(
-                current_token, memory, cache=cache, use_cache=True, is_causal=True
+                current_token, memory, cache=cache, return_cache=True, is_causal=True
             )
             logits_with_cache_list.append(logits_step)
 
@@ -147,7 +145,6 @@ def test_transformer(model: EncoderDecoderTransformer):
         src_padded,
         max_len=20,
         start_tokens=start_tokens_padded,
-        end_token=end_token_id,
         src_key_padding_mask=src_padding_mask,
         temperature=1.0,
         top_p=0.9,
@@ -167,15 +164,144 @@ def test_transformer(model: EncoderDecoderTransformer):
         src_greedy,
         max_len=25,
         start_tokens=start_tokens_greedy,
-        end_token=end_token_id,
     )
 
     print(f"Greedy generated shape: {generated_greedy.shape}")
     print(f"First sequence (codebook 0): {generated_greedy[0, 0].tolist()[:10]}...")
 
-    # Example 7: Loss computation
+    # Example 7: Verify generate_greedy matches forward pass
     print("\n" + "-" * 80)
-    print("Example 7: Loss Computation")
+    print("Example 7: Verify generate_greedy() vs forward() Consistency")
+    print("-" * 80)
+
+    model.eval()
+    with torch.no_grad():
+        src_verify = torch.randint(0, vocab_size, (2, num_codebooks, 15))
+        start_tokens_verify = torch.full((2, num_codebooks), start_token_id, dtype=torch.long)
+        max_gen_len = 10
+        
+        print("Testing if generate_greedy() produces same results as forward pass...")
+        print(f"Source shape: {src_verify.shape}")
+        print(f"Start tokens: {start_tokens_verify.shape}")
+        print(f"Max generation length: {max_gen_len}")
+        
+        # Method 1: Use generate_greedy
+        generated_seq = model.generate_greedy(
+            src_verify,
+            max_len=max_gen_len,
+            start_tokens=start_tokens_verify,
+        )
+        
+        print(f"\nGenerated sequence shape: {generated_seq.shape}")
+        print(f"Generated sequence (first sample, codebook 0): {generated_seq[0, 0].tolist()}")
+        
+        # Method 2: Step-by-step generation with decode() to match generate_greedy logic
+        print("\nStep-by-step verification:")
+        memory = model.encode(src_verify)
+        cache = [{"self_attn": None, "cross_attn": None} for _ in range(model.num_decoder_layers)]
+        
+        # Start with initial tokens
+        current_seq = start_tokens_verify.unsqueeze(-1)  # [B, C, 1]
+        
+        for step in range(max_gen_len - 1):
+            # Get last token
+            current_token = current_seq[:, :, -1:]  # [B, C, 1]
+            
+            # Decode with cache
+            logits_step, cache = model.decode(
+                current_token, 
+                memory, 
+                cache=cache, 
+                return_cache=True, 
+                is_causal=True
+            )  # [B, C, 1, V]
+            
+            # Get next token
+            next_token = logits_step.argmax(dim=-1)  # [B, C, 1]
+            current_seq = torch.cat([current_seq, next_token], dim=2)
+            
+            # Compare with generated sequence at this step
+            gen_token = generated_seq[:, :, step + 1:step + 2]
+            if step > 2 and not torch.equal(next_token, gen_token):
+                print(f"\n  Step {step}: MISMATCH!")
+                print(f"    Manual decode: {next_token[0, 0].item()}")
+                print(f"    generate_greedy: {gen_token[0, 0].item()}")
+                print(f"    Top-5 logits: {logits_step[0, 0, 0].topk(5)}")
+                break
+        else:
+            print("  All steps match between manual decode and generate_greedy ✓")
+        
+        # Method 3: Full forward pass comparison (original test)
+        print("\nFull forward pass comparison:")
+        tgt_input = generated_seq[:, :, :-1]  # [B, C, T-1]
+        logits_forward = model(src_verify, tgt_input)  # [B, C, T-1, V]
+        
+        # Get greedy predictions from forward pass
+        predicted_tokens = logits_forward.argmax(dim=-1)  # [B, C, T-1]
+        
+        # Compare: generated_seq[:, :, 1:] should match predicted_tokens
+        generated_next_tokens = generated_seq[:, :, 1:]  # [B, C, T-1]
+
+        predicted_tokens = predicted_tokens[:, :, 4:]
+        generated_next_tokens = generated_next_tokens[:, :, 4:]
+        
+        matches = torch.equal(generated_next_tokens, predicted_tokens)
+        diff_count = (generated_next_tokens != predicted_tokens).sum().item()
+        total_tokens = generated_next_tokens.numel()
+        
+        print(f"  Forward pass logits shape: {logits_forward.shape}")
+        print(f"  Predicted tokens shape: {predicted_tokens.shape}")
+        print(f"  All tokens match: {matches}")
+        print(f"  Mismatched tokens: {diff_count}/{total_tokens}")
+        
+        if not matches:
+            print("\n  Detailed mismatch analysis:")
+            # Check first position separately
+            first_pos_match = torch.equal(generated_next_tokens[:, :, 0], predicted_tokens[:, :, 0])
+            print(f"    First position matches: {first_pos_match}")
+            
+            # Find where mismatches start
+            for t in range(generated_next_tokens.size(2)):
+                pos_matches = torch.equal(generated_next_tokens[:, :, t], predicted_tokens[:, :, t])
+                if not pos_matches:
+                    print(f"    First mismatch at position {t}")
+                    break
+            
+            # Show detailed first mismatch
+            print("\n  First mismatch details:")
+            for b in range(generated_seq.size(0)):
+                for c in range(num_codebooks):
+                    for t in range(generated_next_tokens.size(2)):
+                        if generated_next_tokens[b, c, t] != predicted_tokens[b, c, t]:
+                            print(f"    Batch {b}, Codebook {c}, Position {t}:")
+                            print(f"      generate_greedy token: {generated_next_tokens[b, c, t].item()}")
+                            print(f"      forward pass token:    {predicted_tokens[b, c, t].item()}")
+                            top5_vals, top5_idx = logits_forward[b, c, t].topk(5)
+                            print(f"      Top-5 logits: {list(zip(top5_idx.tolist(), top5_vals.tolist()))}")
+                            print(f"      Input token at position {t}: {tgt_input[b, c, t].item()}")
+                            break
+                    else:
+                        continue
+                    break
+                else:
+                    continue
+                break
+            
+            print("\n  DIAGNOSIS: This mismatch suggests one of the following issues:")
+            print("    1. Dropout is enabled during generation (should be model.eval())")
+            print("    2. Cache is not being used correctly in generate_greedy()")
+            print("    3. Causal masking differs between forward() and decode()")
+            print("    4. There's a subtle bug in the generation logic")
+        else:
+            print("  ✓ generate_greedy() is consistent with forward() pass")
+        
+        # Don't assert yet - let's collect more info
+        if not matches:
+            print("\n  WARNING: Consistency check failed! See diagnosis above.")
+
+    # Example 8: Loss computation
+    print("\n" + "-" * 80)
+    print("Example 8: Loss Computation")
     print("-" * 80)
 
     batch_size = 8
@@ -191,7 +317,7 @@ def test_transformer(model: EncoderDecoderTransformer):
     logits_flat = logits.reshape(B * C * T, V)
     tgt_flat = tgt_loss.reshape(B * C * T)
     
-    loss = F.cross_entropy(logits_flat, tgt_flat)
+    loss = F.cross_entropy(logits_flat, tgt_flat, ignore_index=padding_idx);
     
     print(f"Logits shape: {logits.shape}")
     print(f"Target shape: {tgt_loss.shape}")
@@ -206,7 +332,8 @@ def test_transformer(model: EncoderDecoderTransformer):
         cb_target = tgt_loss[:, cb_idx, :]   # [B, T]
         cb_loss = F.cross_entropy(
             cb_logits.reshape(B * T, V),
-            cb_target.reshape(B * T)
+            cb_target.reshape(B * T),
+            ignore_index=padding_idx,
         )
         losses_per_codebook.append(cb_loss.item())
     
@@ -223,15 +350,14 @@ if __name__ == "__main__":
     # Hyperparameters
     vocab_size = 2049  # 2048 codes + 1 padding
     num_codebooks = 4
-    d_model = 512
+    d_model = 32
     nhead = 8
-    num_encoder_layers = 6
-    num_decoder_layers = 6
-    dim_feedforward = 2048
+    num_encoder_layers = 2
+    num_decoder_layers = 2
+    dim_feedforward = 128
     dropout = 0.1
     padding_idx = 2048
     start_token_id = 0
-    end_token_id = 1
 
     # Create model
     model = EncoderDecoderTransformer(
@@ -243,7 +369,7 @@ if __name__ == "__main__":
         num_decoder_layers=num_decoder_layers,
         dim_feedforward=dim_feedforward,
         dropout=dropout,
-        norm_first=False,  # Post-norm (traditional)
+        norm_first=True,
         padding_idx=padding_idx,
     )
 

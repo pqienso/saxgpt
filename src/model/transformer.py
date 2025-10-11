@@ -106,7 +106,7 @@ class EncoderDecoderTransformer(nn.Module):
         tgt_key_padding_mask: Optional[torch.Tensor] = None,
         memory_key_padding_mask: Optional[torch.Tensor] = None,
         cache: Optional[List[Dict[str, CacheEntry]]] = None,
-        use_cache: bool = False,
+        return_cache: bool = False,
         is_causal: bool = False,
     ) -> Tuple[torch.Tensor, List[Dict[str, CacheEntry]]]:
         """
@@ -116,7 +116,7 @@ class EncoderDecoderTransformer(nn.Module):
             tgt: [batch_size, num_codebooks, tgt_seq_len]
             memory: [batch_size, src_seq_len, d_model]
             cache: Optional list of cache dicts for each decoder layer
-            use_cache: Whether to return updated caches
+            return_cache: Whether to return updated caches
             is_causal: Apply causal masking
 
         Returns:
@@ -140,7 +140,7 @@ class EncoderDecoderTransformer(nn.Module):
             tgt_key_padding_mask=tgt_key_padding_mask,
             memory_key_padding_mask=memory_key_padding_mask,
             cache=cache,
-            use_cache=use_cache,
+            return_cache=return_cache,
             is_causal=is_causal,
         )
 
@@ -176,7 +176,7 @@ class EncoderDecoderTransformer(nn.Module):
             memory_mask,
             tgt_key_padding_mask,
             memory_key_padding_mask,
-            use_cache=False,
+            return_cache=False,
             is_causal=(tgt_mask is None),  # Auto-detect causal if no mask provided
         )
         return logits
@@ -257,7 +257,7 @@ class EncoderDecoderTransformer(nn.Module):
                 memory,
                 memory_key_padding_mask=src_key_padding_mask,
                 cache=cache,
-                use_cache=True,
+                return_cache=True,
                 is_causal=True,
             )
 
@@ -360,7 +360,7 @@ class EncoderDecoderTransformer(nn.Module):
                 memory,
                 memory_key_padding_mask=src_key_padding_mask,
                 cache=cache,
-                use_cache=True,
+                return_cache=True,
                 is_causal=True,
             )
 
