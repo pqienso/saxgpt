@@ -34,5 +34,5 @@ augmentation: null
 
 dataset:
   seq_len: 1500 # 30 * 50
-  stride: 750
+  stride: 1500
   padding_idx: 2048

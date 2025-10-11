@@ -1,0 +1,59 @@
+data:
+  train_path: "data/experiment/datasets/train.pt"
+  val_path: "data/experiment/datasets/val.pt"
+
+model:
+  vocab_size: 2049
+  num_codebooks: 4
+  d_model: 64
+  nhead: 4
+  num_encoder_layers: 4
+  num_decoder_layers: 4
+  dim_feedforward: 256
+  dropout: 0.2
+  activation: "relu"         
+  norm_first: true          
+  max_seq_len: 1505
+  padding_idx: 2048
+  scale_embeddings: true
+
+
+training:
+  num_epochs: 500
+  # Effective batch size = batch_size * gradient_accumulation_steps
+  batch_size: 16
+  gradient_accumulation_steps: 2
+  
+  # Learning rate scheduler
+  scheduler:
+    type: "cosine"           # Options: cosine, linear, step, plateau
+    warmup_steps: 100       # Warmup for N steps
+    total_steps:  null       # Total training steps (auto-calculated if omitted)
+    min_lr: 1.0e-6           # Minimum learning rate
+    
+    # For 'step' scheduler:
+    # type: "step"
+    # step_size: 10          # Decay every N epochs
+    # gamma: 0.5             # Multiply LR by this factor
+    
+    # For 'plateau' scheduler:
+    # type: "plateau"
+    # patience: 8            # Wait N epochs before reducing
+    # factor: 0.5            # Multiply LR by this factor
+
+  # Optimizer
+  optimizer:
+    type: "adamw"
+    lr: 0.01 
+    betas: [0.9, 0.98]
+    eps: 1.0e-9
+    weight_decay: 0.01
+  
+  # Logging and checkpointing
+  output_dir: "models/experiment"
+  log_interval: 2           # Log metrics every N steps
+  save_interval: 50      # Save checkpoint every N epochs
+  num_workers: 8             # DataLoader workers
+  
+  # Resume training (optional)
+  resume_from_checkpoint: "models/experiment/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

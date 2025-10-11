@@ -1,65 +1,16 @@
-from transformers import AutoProcessor
-from transformers import EncodecModel
 import torch
-from torch import Tensor
 import argparse
-from tqdm import tqdm
 from pathlib import Path
 import yaml
-import pandas as pd
-from typing import List, Tuple, Dict
-import json
-from datetime import timedelta
 import random
 
-from audio_util import trim_wav_file
-from augmentation import AudioAugmenter
-from dataset_util import get_tensor_dataset, train_test_split
-from tokenization import tokenize
-
-
-def clip_valid_windows(metadata: List[Dict]) -> List[Tuple[Tensor, Tensor]]:
-    examples = []
-    for metadata_entry in tqdm(metadata):
-        video_id = metadata_entry["video_id"]
-        windows = json.loads(metadata_entry["valid_windows"])
-        for window in windows:
-            start, end = window[0], window[1]
-            lead_audio = trim_wav_file(
-                stem_path / f"sax_{video_id}.wav",
-                timedelta(seconds=start),
-                timedelta(seconds=end),
-            )
-            backing_audio = trim_wav_file(
-                stem_path / f"rhythm_{video_id}.wav",
-                timedelta(seconds=start),
-                timedelta(seconds=end),
-            )
-            examples.append((backing_audio, lead_audio))
-    return examples
-
-
-def augment_examples(
-    examples: List[Tuple[Tensor, Tensor]],
-    augmenter: AudioAugmenter,
-) -> List[Tuple[Tensor, Tensor]]:
-    new_examples = []
-    for lead_audio, backing_audio in tqdm(examples):
-        augmented_leads = augmenter(lead_audio)
-        augmented_backings = augmenter(backing_audio)
-        new_examples.extend(
-            [
-                (backing, lead)
-                for backing, lead in zip(augmented_backings, augmented_leads)
-            ]
-        )
-    return new_examples
+from .dataset_util import get_tensor_dataset, train_test_split
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = argparse.ArgumentParser(
-        description="Cut audio, augment pitch/tempo, tokenize, and split into train/test/val."
+        description="Split codes into train/test/val."
     )
     parser.add_argument(
         "--config",
@@ -69,14 +20,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(Path(args.config_path), "r") as file:
+    with open(Path(args.config), "r") as file:
         config = yaml.safe_load(file)
     try:
-        stem_path_str = config["data_paths"]["stem_dest"]
-        metadata_path_str = config["data_paths"]["metadata_path"]
         codes_dest_str = config["data_paths"]["codes_dest"]
         datasets_dest_str = config["data_paths"]["datasets_dest"]
-        aug_cfg = config["augmentation"]
         test_prop = config["train_test_split"]["test"]
         val_prop = config["train_test_split"]["val"]
         seed = config["train_test_split"]["seed"]
@@ -85,35 +33,11 @@ if __name__ == "__main__":
         print(f"Error: Missing key in configuration file: {e}")
         raise
 
-    stem_path = Path(stem_path_str)
     codes_dest = Path(codes_dest_str)
     datasets_dest = Path(datasets_dest_str)
     datasets_dest.mkdir(exist_ok=True)
-    metadata = pd.read_csv(metadata_path_str).to_dict(orient="records")
 
-    print("\n\nClipping audio files...")
-    examples = clip_valid_windows(metadata)
-    print(f"Got {len(examples)} clips from {len(metadata)} audio files.")
-
-    if aug_cfg is not None:
-        print("\n\nAugmenting audio clips...")
-        augmenter = AudioAugmenter(**aug_cfg)
-        examples = augment_examples(examples, augmenter)
-
-    print("\n\nBeginning tokenization")
-    print("Getting model and processor")
-    model = EncodecModel.from_pretrained("facebook/encodec_32khz")
-    processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
-
-    codes = []
-    for backing, lead in tqdm(examples):
-        lead_codes = tokenize(lead, processor, model)
-        backing_codes = tokenize(backing, processor, model)
-        if lead_codes.shape != backing_codes.shape:
-            print("\n\nWARNING: lead and backing codes have different shape")
-        codes.append((backing_codes, lead_codes))
-    torch.save(codes, codes_dest)
-    print("\n\nTokenization complete.")
+    codes = torch.load(codes_dest, weights_only=False)
 
     print("\n\nProducing dataset")
     print("Splitting train / test")

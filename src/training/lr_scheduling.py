@@ -73,7 +73,6 @@ def create_scheduler(optimizer, config, num_training_steps):
             patience=patience,
             factor=factor,
             min_lr=min_lr,
-            verbose=True
         )
     
     else:

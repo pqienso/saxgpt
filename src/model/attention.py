@@ -390,10 +390,6 @@ class MultiHeadCrossAttentionWithCache(nn.Module):
         # Reshape Q
         Q = Q.view(batch_size, tgt_len, self.nhead, self.d_k).transpose(1, 2)
 
-        # ===================================================================
-        # NEW: Improved Flash Attention usage - handles masks properly
-        # ===================================================================
-
         if self.use_flash:
             # Prepare mask in Flash Attention format
             flash_mask = self._prepare_flash_attention_mask(
