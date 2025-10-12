@@ -42,7 +42,8 @@ training:
   # Optimizer
   optimizer:
     type: "adamw"
-    lr: 0.03
+    lr: 0.001
+    embedding_lr: null # Specify for larger embedding LR
     betas: [0.9, 0.98]
     eps: 1.0e-9
     weight_decay: 0.1

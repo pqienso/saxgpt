@@ -15,10 +15,10 @@ from ..model.transformer import EncoderDecoderTransformer
 def load_config(config_path: str) -> Dict:
     """
     Load configuration from YAML file.
-    
+
     Args:
         config_path: Path to YAML configuration file
-        
+
     Returns:
         Configuration dictionary
     """
@@ -30,10 +30,10 @@ def load_config(config_path: str) -> Dict:
 def create_model(config: Dict) -> EncoderDecoderTransformer:
     """
     Create model from configuration.
-    
+
     Args:
         config: Configuration dictionary
-        
+
     Returns:
         Initialized model
     """
@@ -59,11 +59,11 @@ def create_model(config: Dict) -> EncoderDecoderTransformer:
 def load_dataset(data_path: str, dataset_name: str = "dataset") -> TensorDataset:
     """
     Load dataset from .pt file.
-    
+
     Args:
         data_path: Path to .pt file
         dataset_name: Name for logging purposes
-        
+
     Returns:
         TensorDataset
     """
@@ -84,22 +84,20 @@ def load_dataset(data_path: str, dataset_name: str = "dataset") -> TensorDataset
 def load_datasets(config: Dict) -> Tuple[TensorDataset, TensorDataset]:
     """
     Load training and validation datasets from configuration.
-    
+
     Args:
         config: Configuration dictionary with data paths
-        
+
     Returns:
         Tuple of (train_dataset, val_dataset)
     """
     train_dataset = load_dataset(
-        config["data"]["train_path"],
-        dataset_name="training data"
+        config["data"]["train_path"], dataset_name="training data"
     )
     val_dataset = load_dataset(
-        config["data"]["val_path"],
-        dataset_name="validation data"
+        config["data"]["val_path"], dataset_name="validation data"
     )
-    
+
     return train_dataset, val_dataset
 
 
@@ -112,14 +110,14 @@ def create_dataloader(
 ) -> DataLoader:
     """
     Create DataLoader with standard settings.
-    
+
     Args:
         dataset: Dataset to load
         batch_size: Batch size
         shuffle: Whether to shuffle data
         num_workers: Number of worker processes
         pin_memory: Whether to pin memory for CUDA
-        
+
     Returns:
         DataLoader
     """
@@ -135,7 +133,7 @@ def create_dataloader(
 def setup_device() -> torch.device:
     """
     Setup and return the appropriate device (CUDA or CPU).
-    
+
     Returns:
         torch.device
     """
@@ -150,18 +148,18 @@ def setup_device() -> torch.device:
 def print_model_info(model: nn.Module):
     """
     Print model parameter information.
-    
+
     Args:
         model: PyTorch model
     """
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    
+
     print("\nModel Information:")
     print(f"  Total parameters:     {total_params:,}")
     print(f"  Trainable parameters: {trainable_params:,}")
     print(f"  Non-trainable params: {total_params - trainable_params:,}")
-    
+
     # Calculate model size in MB
     param_size = sum(p.numel() * p.element_size() for p in model.parameters())
     buffer_size = sum(b.numel() * b.element_size() for b in model.buffers())
@@ -170,9 +168,7 @@ def print_model_info(model: nn.Module):
 
 
 def calculate_accuracy(
-    logits: torch.Tensor, 
-    targets: torch.Tensor, 
-    padding_idx: int
+    logits: torch.Tensor, targets: torch.Tensor, padding_idx: int
 ) -> float:
     """
     Calculate token-level accuracy, ignoring padding tokens.
@@ -207,12 +203,12 @@ def load_checkpoint_for_inference(
 ) -> Dict:
     """
     Load model checkpoint for inference/evaluation.
-    
+
     Args:
         model: Model to load weights into
         checkpoint_path: Path to checkpoint file
         device: Device to load checkpoint on
-        
+
     Returns:
         Checkpoint dictionary with metadata
     """
@@ -220,18 +216,18 @@ def load_checkpoint_for_inference(
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     model.load_state_dict(checkpoint["model_state_dict"])
-    
+
     # Extract metadata
     epoch = checkpoint.get("epoch", -1)
     step = checkpoint.get("step", -1)
     metrics = checkpoint.get("metrics", {})
-    
+
     print("Checkpoint info:")
     print(f"  Epoch: {epoch}")
     print(f"  Step: {step}")
     if metrics:
         print(f"  Metrics: {metrics}")
-    
+
     return checkpoint
 
 
@@ -245,7 +241,7 @@ def load_checkpoint_for_training(
 ) -> Tuple[int, int, Dict[str, float]]:
     """
     Load checkpoint for resuming training.
-    
+
     Args:
         model: Model to load weights into
         optimizer: Optimizer to load state into
@@ -253,7 +249,7 @@ def load_checkpoint_for_training(
         scheduler: LR scheduler to load state into (optional)
         checkpoint_path: Path to checkpoint file
         device: Device to load checkpoint on
-        
+
     Returns:
         Tuple of (epoch, step, metrics)
     """
@@ -288,7 +284,7 @@ def save_checkpoint(
 ):
     """
     Save training checkpoint.
-    
+
     Args:
         model: Model to save
         optimizer: Optimizer state to save
@@ -309,7 +305,7 @@ def save_checkpoint(
         "metrics": metrics,
         "config": config,
     }
-    
+
     if scheduler:
         checkpoint["scheduler_state_dict"] = scheduler.state_dict()
 
@@ -317,35 +313,53 @@ def save_checkpoint(
     print(f"Checkpoint saved to {checkpoint_path}")
 
 
-def create_optimizer(model: nn.Module, config: Dict) -> torch.optim.Optimizer:
+def create_optimizer(
+    model: EncoderDecoderTransformer, config: Dict
+) -> torch.optim.Optimizer:
     """
     Create optimizer from configuration.
-    
+
     Args:
         model: Model whose parameters to optimize
         config: Configuration dictionary
-        
+
     Returns:
         Optimizer instance
     """
     optimizer_config = config["training"]["optimizer"]
     optimizer_type = optimizer_config["type"].lower()
-    
-    common_args = {
+
+    optimizer_args = {
         "lr": optimizer_config["lr"],
         "betas": tuple(optimizer_config.get("betas", [0.9, 0.999])),
         "eps": optimizer_config.get("eps", 1e-8),
         "weight_decay": optimizer_config.get("weight_decay", 0.0),
     }
-    
+
+    embedding_lr = optimizer_config["embedding_lr"]
+    if embedding_lr is None:
+        parameters = model.parameters()
+    else:
+        embedding_parameters = []
+        other_parameters = []
+        for name, param in model.named_parameters():
+            if ".embedding." in name:
+                embedding_parameters.append(param)
+            else:
+                other_parameters.append(param)
+        parameters = [
+            {"params": embedding_parameters, "lr": embedding_lr},
+            {"params": other_parameters, "lr": optimizer_args["lr"]},
+        ]
+
     if optimizer_type == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), **common_args)
+        optimizer = torch.optim.Adam(parameters, **optimizer_args)
     elif optimizer_type == "adamw":
-        common_args["weight_decay"] = optimizer_config.get("weight_decay", 0.01)
-        optimizer = torch.optim.AdamW(model.parameters(), **common_args)
+        optimizer_args["weight_decay"] = optimizer_config.get("weight_decay", 0.01)
+        optimizer = torch.optim.AdamW(parameters, **optimizer_args)
     else:
         raise ValueError(f"Unknown optimizer type: {optimizer_config['type']}")
-    
+
     print(f"Created optimizer: {optimizer_type}")
     return optimizer
 
@@ -353,29 +367,37 @@ def create_optimizer(model: nn.Module, config: Dict) -> torch.optim.Optimizer:
 def validate_config(config: Dict):
     """
     Validate that required configuration keys are present.
-    
+
     Args:
         config: Configuration dictionary
-        
+
     Raises:
         ValueError: If required keys are missing
     """
     required_keys = {
-        "model": ["vocab_size", "num_codebooks", "d_model", "nhead", 
-                  "num_encoder_layers", "num_decoder_layers", 
-                  "dim_feedforward", "dropout", "padding_idx"],
+        "model": [
+            "vocab_size",
+            "num_codebooks",
+            "d_model",
+            "nhead",
+            "num_encoder_layers",
+            "num_decoder_layers",
+            "dim_feedforward",
+            "dropout",
+            "padding_idx",
+        ],
         "training": ["batch_size", "num_epochs", "optimizer", "output_dir"],
         "data": ["train_path", "val_path"],
     }
-    
+
     for section, keys in required_keys.items():
         if section not in config:
             raise ValueError(f"Missing required config section: {section}")
-        
+
         for key in keys:
             if key not in config[section]:
                 raise ValueError(f"Missing required config key: {section}.{key}")
-    
+
     # Validate optimizer config
     if "type" not in config["training"]["optimizer"]:
         raise ValueError("Missing required config key: training.optimizer.type")
