@@ -39,6 +39,33 @@ class MetricsTracker:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.metrics_file = self.log_dir / "metrics.jsonl"
         self.best_val_loss = float("inf")
+        self._init_existing_file()
+
+    def _init_existing_file(self):
+        if not self.metrics_file.exists():
+            return
+
+        metrics = []
+        last_line = None
+
+        with open(self.metrics_file, "r") as f:
+            for i, line in enumerate(f):
+                metric = json.loads(line)
+                metrics.append(metric)
+                if "epoch_train_loss" in metric:
+                    last_line = i
+                if "epoch_val_loss" in metric:
+                    self.best_val_loss = min(
+                        self.best_val_loss,
+                        metric["epoch_val_loss"]
+                    )
+        if last_line is None:
+            return
+
+        metrics = metrics[:last_line + 1]
+        with open(self.metrics_file, "w") as f:
+            f.write("\n".join(metrics) + "\n")
+
 
     def log(self, epoch: int, step: int, metrics: Dict[str, float]):
         """Log metrics to file."""
@@ -80,7 +107,7 @@ def train_epoch(
     gradient_accumulation_steps = config["training"]["gradient_accumulation_steps"]
     padding_idx = config["model"]["padding_idx"]
     max_grad_norm = config["training"].get("max_grad_norm", 1.0)
-
+    grad_norm = None
     optimizer.zero_grad()
 
     pbar = tqdm(dataloader, desc=f"Epoch {epoch + 1}")
@@ -120,7 +147,7 @@ def train_epoch(
         if (batch_idx + 1) % gradient_accumulation_steps == 0:
             # Unscale gradients and clip
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
             # Optimizer step
             scaler.step(optimizer)
@@ -152,6 +179,7 @@ def train_epoch(
         # Update progress bar
         pbar.set_postfix(
             {
+                "grad": None if grad_norm is None else grad_norm.item(),
                 "loss": f"{total_loss / num_batches:.4f}",
                 "acc": f"{total_accuracy / num_batches:.4f}",
                 "step": global_step,

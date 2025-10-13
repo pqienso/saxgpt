@@ -1,3 +1,10 @@
+# Stronger regularization, turned off embedding scaling. Used LR Plateau Scheduler.
+# Better validation loss (5.75), but training loss suffered (3.0 -> 4.0).
+# At this training loss, audio produced is not viable (<20% train accuracy)
+# Looks like data is not sufficient. But due to hardware constraints,
+# I think it would be better to overfit the model just so I have some viable audio
+# to showcase.
+
 data:
   train_path: "data/main/datasets/train.pt"
   val_path: "data/main/datasets/val.pt"
@@ -53,10 +60,10 @@ training:
     weight_decay: 1.0e-2
   
   # Logging and checkpointing
-  output_dir: "models/small"
+  output_dir: "experiments/121025_small"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "models/small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/121025_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

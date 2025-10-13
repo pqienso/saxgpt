@@ -1,8 +1,11 @@
+# Initial config after overfit on experimental dataset worked.
+# Experienced significant overfitting: 3.0 CE training loss, 9.0 CE val loss.
+# Likely not enough data + overfitting.
+
 data:
   train_path: "data/main/datasets/train.pt"
   val_path: "data/main/datasets/val.pt"
 
-# 4.8M Param model
 model:
   vocab_size: 2049
   num_codebooks: 4
@@ -11,12 +14,12 @@ model:
   num_encoder_layers: 6
   num_decoder_layers: 6
   dim_feedforward: 512
-  dropout: 0.3
-  activation: "relu"
-  norm_first: true
+  dropout: 0.1
+  activation: "relu"         
+  norm_first: false          
   max_seq_len: 1505
   padding_idx: 2048
-  scale_embeddings: false
+  scale_embeddings: true
 
 
 training:
@@ -24,39 +27,37 @@ training:
   # Effective batch size = batch_size * gradient_accumulation_steps
   batch_size: 8
   gradient_accumulation_steps: 8
-  max_grad_norm: 2.0
+  max_grad_norm: 5.0
   
   # Learning rate scheduler
   scheduler:
-    # type: "cosine"           # Options: cosine, linear, step, plateau
-    # warmup_steps: 1000       # Warmup for N steps
-    # total_steps:  null       # Total training steps (auto-calculated if omitted)
-    # min_lr: 1.0e-6           # Minimum learning rate
+    type: "cosine"           # Options: cosine, linear, step, plateau
+    warmup_steps: 300       # Warmup for N steps
+    total_steps:  null       # Total training steps (auto-calculated if omitted)
+    min_lr: 1.0e-6           # Minimum learning rate
     
     # For 'step' scheduler:
     # step_size: 10          # Decay every N epochs
     # gamma: 0.5             # Multiply LR by this factor
     
     # For 'plateau' scheduler:
-    type: "plateau"
-    patience: 5            # Wait N epochs before reducing
-    factor: 0.5            # Multiply LR by this factor
-    min_lr: 1.0e-7
+    # patience: 3            # Wait N epochs before reducing
+    # factor: 0.5            # Multiply LR by this factor
 
   # Optimizer
   optimizer:
     type: "adamw"
-    lr: 0.0005
-    embedding_lr: null
+    lr: 0.001
+    embedding_lr: 0.005
     betas: [0.9, 0.98]
     eps: 1.0e-9
-    weight_decay: 1.0e-2
+    weight_decay: 1.0e-4
   
   # Logging and checkpointing
-  output_dir: "models/small"
+  output_dir: "experiments/111025_small/"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "models/small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/111025_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

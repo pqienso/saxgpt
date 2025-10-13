@@ -3,7 +3,11 @@
 data/*/datasets/
 
 # Models
-models/*
+models/
+
+# Experiments
+experiments/*/checkpoints/
+experiments/*/logs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
