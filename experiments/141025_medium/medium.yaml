@@ -1,0 +1,57 @@
+data:
+  train_path: "data/main/datasets/train.pt"
+  val_path: "data/main/datasets/val.pt"
+
+model:
+  vocab_size: 2049
+  num_codebooks: 4
+  d_model: 256
+  nhead: 16
+  num_encoder_layers: 16
+  num_decoder_layers: 16
+  dim_feedforward: 1024
+  dropout: 0.1
+  activation: "relu"         
+  norm_first: false          
+  max_seq_len: 1505
+  padding_idx: 2048
+  scale_embeddings: true
+
+
+training:
+  num_epochs: 1000
+  # Effective batch size = batch_size * gradient_accumulation_steps
+  batch_size: 2
+  gradient_accumulation_steps: 16
+  
+  # Learning rate scheduler
+  scheduler:
+    type: "cosine"           # Options: cosine, linear, step, plateau
+    warmup_steps: 1000       # Warmup for N steps
+    total_steps:  null       # Total training steps (auto-calculated if omitted)
+    min_lr: 1.0e-6           # Minimum learning rate
+    
+    # For 'step' scheduler:
+    # step_size: 10          # Decay every N epochs
+    # gamma: 0.5             # Multiply LR by this factor
+    
+    # For 'plateau' scheduler:
+    # patience: 3            # Wait N epochs before reducing
+    # factor: 0.5            # Multiply LR by this factor
+
+  # Optimizer
+  optimizer:
+    type: "adamw"
+    lr: 0.0001 
+    betas: [0.9, 0.98]
+    eps: 1.0e-9
+    weight_decay: 0.01
+  
+  # Logging and checkpointing
+  output_dir: "models/medium"
+  log_interval: 2           # Log metrics every N steps
+  save_interval: 50      # Save checkpoint every N epochs
+  num_workers: 8             # DataLoader workers
+  
+  # Resume training (optional)
+  resume_from_checkpoint: "models/medium/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

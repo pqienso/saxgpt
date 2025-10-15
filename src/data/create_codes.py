@@ -67,7 +67,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(Path(args.config_path), "r") as file:
+    with open(Path(args.config), "r") as file:
         config = yaml.safe_load(file)
     try:
         stem_path_str = config["data_paths"]["stem_dest"]
