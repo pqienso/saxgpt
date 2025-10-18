@@ -13,9 +13,9 @@ demucs:
   n_jobs: 16
 
 rms_window:
-  rms_threshold: 0.0175
+  rms_threshold: 0.05
   min_window_size_seconds: 30.0
-  rms_frame_length_seconds: 10
+  rms_frame_length_seconds: 10.0
   rms_stride_seconds: 0.2
 
 train_test_split:

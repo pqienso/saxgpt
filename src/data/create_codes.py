@@ -48,6 +48,11 @@ if __name__ == "__main__":
         help="Path to the YAML configuration file",
         default="config/data/main.yaml",
     )
+    parser.add_argument(
+        "--cuda",
+        action="store_true",
+        help="Use CUDA for tokenization",
+    )
     args = parser.parse_args()
 
     with open(Path(args.config), "r") as file:
@@ -80,11 +85,14 @@ if __name__ == "__main__":
     processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
 
     codes = []
+    device = torch.device("cuda" if args.cuda else "cpu")
     for backing, lead in tqdm(examples):
+        backing = backing.to(device)
+        lead = lead.to(device)
         lead_codes = tokenize(lead, processor, model)
         backing_codes = tokenize(backing, processor, model)
         if lead_codes.shape != backing_codes.shape:
             print("\n\nWARNING: lead and backing codes have different shape")
-        codes.append((backing_codes, lead_codes))
+        codes.append((backing_codes.cpu(), lead_codes.cpu()))
     torch.save(codes, codes_dest)
     print(f"\n\nTokenization complete. Codes saved to {codes_dest}")

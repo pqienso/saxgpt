@@ -25,6 +25,7 @@ def stem_split_audio(
     audio = normalize_lufs(audio, sr)
     rhythm_audio = torch.zeros_like(audio)
 
+    sax_audio = None
     for _ in range(n_splits):
         _, separated = separator.separate_tensor(audio, sr=sr)
         rhythm_audio += mix_audio_values(

@@ -68,7 +68,7 @@ if __name__ == "__main__":
         dl_dest,
         separator,
         stem_dest,
-        n_splits,
+        n_splits=n_splits,
     )
 
     print("\n\nStem split complete. Dataset created.")
