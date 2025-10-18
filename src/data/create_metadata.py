@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Optional
 from tqdm.auto import tqdm
 
-from data_ingestion import extract_url_title
-from audio_util import get_audio_length, extract_windows_above_threshold
+from .data_ingestion import extract_url_title
+from .audio_util import get_audio_length, extract_windows_above_threshold
 
 tqdm.pandas()
 

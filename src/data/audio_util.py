@@ -5,12 +5,40 @@ from torch import Tensor
 from typing import Dict, List, Optional, Tuple
 from datetime import timedelta
 from pathlib import Path
+import pyloudnorm
 
 
 def mono_resample_audio(audio: torch.Tensor, old_sr: int, final_sr: int):
     audio = audio.mean(dim=0, keepdim=True)
     resampler = torchaudio.transforms.Resample(orig_freq=old_sr, new_freq=final_sr)
     return resampler(audio)
+
+
+def normalize_lufs(
+    waveform: torch.Tensor, sr: int, target_lufs: float = -14.0
+) -> torch.Tensor:
+    """
+    Normalizes a torchaudio waveform to a target LUFS level.
+
+    Args:
+        waveform (torch.Tensor): The input waveform tensor.
+        sample_rate (int): The sample rate of the audio.
+        target_lufs (float): The desired LUFS level.
+
+    Returns:
+        torch.Tensor: The loudness-normalized waveform tensor.
+    """
+    assert waveform.dim() == 2
+    waveform_np = waveform.transpose(0, 1).numpy()
+
+    meter = pyloudnorm.Meter(sr)
+    loudness = meter.integrated_loudness(waveform_np)
+    normalized_waveform_np = pyloudnorm.normalize.loudness(
+        waveform_np, loudness, target_lufs
+    )
+    normalized_waveform = torch.from_numpy(normalized_waveform_np).transpose(0, 1)
+
+    return normalized_waveform
 
 
 def mix_audio_values(audio_values: Dict, channels: List[str]):

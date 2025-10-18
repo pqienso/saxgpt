@@ -12,7 +12,7 @@ import json
 from datetime import timedelta
 
 from audio_util import trim_wav_file
-from augmentation import AudioAugmenter
+from augmentation import AudioAugmenter, augment_examples
 from tokenization import tokenize
 
 
@@ -35,23 +35,6 @@ def clip_valid_windows(metadata: List[Dict]) -> List[Tuple[Tensor, Tensor]]:
             )
             examples.append((backing_audio, lead_audio))
     return examples
-
-
-def augment_examples(
-    examples: List[Tuple[Tensor, Tensor]],
-    augmenter: AudioAugmenter,
-) -> List[Tuple[Tensor, Tensor]]:
-    new_examples = []
-    for lead_audio, backing_audio in tqdm(examples):
-        augmented_leads = augmenter(lead_audio)
-        augmented_backings = augmenter(backing_audio)
-        new_examples.extend(
-            [
-                (backing, lead)
-                for backing, lead in zip(augmented_backings, augmented_leads)
-            ]
-        )
-    return new_examples
 
 
 if __name__ == "__main__":

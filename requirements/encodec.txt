@@ -10,3 +10,4 @@ soundfile==0.13.1
 ipython==9.6.0
 matplotlib==3.10.6
 pyqt6==6.9.1
+pyloudnorm==0.1.1

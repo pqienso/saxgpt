@@ -4,8 +4,8 @@ import argparse
 import yaml
 from pathlib import Path
 
-from data_ingestion import ingest_audio_url
-from stem_split import stem_split_all_in_folder
+from .data_ingestion import ingest_audio_url
+from .stem_split import stem_split_all_in_folder
 
 
 if __name__ == "__main__":
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         dl_dest,
         separator,
         stem_dest,
-        repeated_splits=n_splits - 1,
+        n_splits,
     )
 
     print("\n\nStem split complete. Dataset created.")
