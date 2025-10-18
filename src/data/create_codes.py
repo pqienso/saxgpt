@@ -11,9 +11,9 @@ from typing import List, Tuple, Dict
 import json
 from datetime import timedelta
 
-from audio_util import trim_wav_file
-from augmentation import AudioAugmenter, augment_examples
-from tokenization import tokenize
+from .audio_util import trim_wav_file
+from .augmentation import AudioAugmenter, augment_examples
+from .tokenization import tokenize
 
 
 def clip_valid_windows(metadata: List[Dict]) -> List[Tuple[Tensor, Tensor]]:
@@ -81,14 +81,12 @@ if __name__ == "__main__":
 
     print("\n\nBeginning tokenization")
     print("Getting model and processor")
-    model = EncodecModel.from_pretrained("facebook/encodec_32khz")
+    device = torch.device("cuda" if args.cuda else "cpu")
+    model = EncodecModel.from_pretrained("facebook/encodec_32khz").to(device)
     processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
 
     codes = []
-    device = torch.device("cuda" if args.cuda else "cpu")
     for backing, lead in tqdm(examples):
-        backing = backing.to(device)
-        lead = lead.to(device)
         lead_codes = tokenize(lead, processor, model)
         backing_codes = tokenize(backing, processor, model)
         if lead_codes.shape != backing_codes.shape:

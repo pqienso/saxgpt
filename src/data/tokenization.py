@@ -5,6 +5,7 @@ from transformers import EncodecModel
 model = EncodecModel.from_pretrained("facebook/encodec_32khz")
 processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
 
+
 def tokenize(
     audio_values: Tensor,
     processor: AutoProcessor = processor,
@@ -15,7 +16,10 @@ def tokenize(
         sampling_rate=processor.sampling_rate,
         return_tensors="pt",
     )
-    output = model.encode(inputs["input_values"], inputs["padding_mask"])
+    device = model.device
+    output = model.encode(
+        inputs["input_values"].to(device), inputs["padding_mask"].to(device)
+    )
     return output.audio_codes.squeeze()
 
 
