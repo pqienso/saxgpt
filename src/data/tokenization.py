@@ -12,7 +12,7 @@ def tokenize(
     model: EncodecModel = model,
 ):
     inputs = processor(
-        raw_audio=audio_values.squeeze(),
+        raw_audio=audio_values.squeeze().cpu(),
         sampling_rate=processor.sampling_rate,
         return_tensors="pt",
     )
