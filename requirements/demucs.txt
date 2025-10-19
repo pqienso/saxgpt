@@ -8,6 +8,6 @@ torchvision==0.15.2
 tqdm==4.67.1
 soundfile==0.13.1
 submitit==1.5.2
-yt-dlp==2025.2.19
+yt-dlp==2025.7.21
 pandas==2.3.2
 demucs @ git+https://github.com/facebookresearch/demucs#egg=demucs
