@@ -9,7 +9,7 @@ models/
 # Experiments
 experiments/*/checkpoints/
 experiments/*/logs/
-experiments/data/*.pt
+experiments/data/*/*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
