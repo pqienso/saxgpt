@@ -1,7 +1,6 @@
 # Data files
 *.wav
-data/*/datasets/
-data/*/codes.pt
+data/
 
 # Models
 models/
