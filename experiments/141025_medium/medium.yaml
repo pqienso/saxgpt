@@ -1,6 +1,6 @@
 data:
-  train_path: "data/main/datasets/train.pt"
-  val_path: "data/main/datasets/val.pt"
+  train_path: "experiments/data/111025/train.pt"
+  val_path: "experiments/data/111025/val.pt"
 
 model:
   vocab_size: 2049
@@ -45,13 +45,13 @@ training:
     lr: 0.0001 
     betas: [0.9, 0.98]
     eps: 1.0e-9
-    weight_decay: 0.01
+    weight_decay: 0.001
   
   # Logging and checkpointing
-  output_dir: "models/medium"
+  output_dir: "experiments/141025_medium"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "models/medium/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/141025_medium/checkpoints/checkpoint_interrupt.pt"

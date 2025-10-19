@@ -16,9 +16,8 @@ if __name__ == "__main__":
         "--config",
         type=str,
         help="Path to the YAML configuration file",
-        default="config/data/main.yaml",
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     with open(Path(args.config), "r") as file:
         config = yaml.safe_load(file)

@@ -1,0 +1,1 @@
+Original dataset with no normalization, unfolded with stride of 1 second.

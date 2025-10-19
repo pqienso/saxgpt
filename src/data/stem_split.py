@@ -12,6 +12,8 @@ def stem_split_audio(
     download_folder: Path,
     final_sr: int = 32000,
     n_splits: int = 1,
+    normalize_before: bool = True,
+    normalize_after: bool = True,
 ) -> None:
     audio_name = wav_file_path.name
     sax_wav_path = download_folder / f"sax_{audio_name}"
@@ -22,7 +24,8 @@ def stem_split_audio(
         return
 
     audio, sr = torchaudio.load(wav_file_path)
-    audio = normalize_lufs(audio, sr)
+    if normalize_before:
+        audio = normalize_lufs(audio, sr)
     rhythm_audio = torch.zeros_like(audio)
 
     sax_audio = None
@@ -34,9 +37,13 @@ def stem_split_audio(
         sax_audio = mix_audio_values(separated, ["vocals", "other"])
 
     rhythm_audio = mono_resample_audio(rhythm_audio, separator.samplerate, final_sr)
+    if normalize_after:
+        rhythm_audio = normalize_lufs(audio, final_sr)
     torchaudio.save(rhythm_wav_path, rhythm_audio, final_sr)
 
     sax_audio = mono_resample_audio(sax_audio, separator.samplerate, final_sr)
+    if normalize_after:
+        rhythm_audio = normalize_lufs(audio, final_sr)
     torchaudio.save(sax_wav_path, sax_audio, final_sr)
 
 
@@ -46,8 +53,18 @@ def stem_split_all_in_folder(
     stems_folder: Path,
     final_sr: int = 32000,
     n_splits: int = 0,
+    normalize_before: bool = True,
+    normalize_after: bool = True,
 ) -> None:
     audio_files = audio_folder.glob("*.wav")
     for index, audio_file in enumerate(audio_files):
         print(f"\n\nSplitting audio file {index + 1}")
-        stem_split_audio(audio_file, separator, stems_folder, final_sr, n_splits)
+        stem_split_audio(
+            audio_file,
+            separator,
+            stems_folder,
+            final_sr,
+            n_splits,
+            normalize_before,
+            normalize_after,
+        )

@@ -7,8 +7,8 @@
 # to showcase.
 
 data:
-  train_path: "data/main/datasets/train.pt"
-  val_path: "data/main/datasets/val.pt"
+  train_path: "experiments/data/111025/train.pt"
+  val_path: "experiments/data/111025/val.pt"
 
 # 4.8M Param model
 model:

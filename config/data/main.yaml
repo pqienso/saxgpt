@@ -11,6 +11,11 @@ demucs:
   n_splits: 2
   n_shifts: 2
   n_jobs: 16
+  normalize_before: true
+  normalize_after: true
+
+encodec:
+  chunk_len_s: 25
 
 rms_window:
   rms_threshold: 0.05
@@ -34,5 +39,5 @@ augmentation: null
 
 dataset:
   seq_len: 1500 # 30 * 50
-  stride: 50
+  stride: 150
   padding_idx: 2048

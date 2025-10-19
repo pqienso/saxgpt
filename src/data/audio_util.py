@@ -74,7 +74,6 @@ def extract_windows_above_threshold(
     min_window_size_seconds: float = 30,
     rms_frame_length_seconds: float = 10,
     rms_stride_seconds: float = 0.2,
-    normalize: bool = True,
 ) -> List[Tuple[float, float]]:
     waveform, sample_rate = torchaudio.load(audio_file_path)
     rms_frame_length = int(rms_frame_length_seconds * sample_rate)
@@ -82,8 +81,6 @@ def extract_windows_above_threshold(
     min_window_size = int(min_window_size_seconds / rms_stride_seconds)
     padding = rms_frame_length - rms_stride
 
-    if normalize:
-        waveform = normalize_lufs(waveform, sample_rate)
     waveform = F.pad(waveform, (padding // 2, padding - padding // 2))
     sliding_window_rms = torch.sqrt(
         F.avg_pool1d(waveform**2, kernel_size=rms_frame_length, stride=rms_stride)
@@ -107,7 +104,7 @@ def extract_windows_above_threshold(
         windows.append(
             (
                 round(window_start * rms_stride_seconds, ndigits=2),
-                round(len(sliding_window_rms) * rms_stride_seconds, ndigits=2)
+                round(len(sliding_window_rms) * rms_stride_seconds, ndigits=2),
             )
         )
 

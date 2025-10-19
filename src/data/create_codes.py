@@ -46,7 +46,6 @@ if __name__ == "__main__":
         "--config",
         type=str,
         help="Path to the YAML configuration file",
-        default="config/data/main.yaml",
     )
     parser.add_argument(
         "--cuda",
@@ -62,6 +61,7 @@ if __name__ == "__main__":
         metadata_path_str = config["data_paths"]["metadata_path"]
         codes_dest_str = config["data_paths"]["codes_dest"]
         aug_cfg = config["augmentation"]
+        encodec_chunk_len = config["encodec"]["chunk_len_s"]
     except KeyError as e:
         print(f"Error: Missing key in configuration file: {e}")
         raise
@@ -82,13 +82,14 @@ if __name__ == "__main__":
     print("\n\nBeginning tokenization")
     print("Getting model and processor")
     device = torch.device("cuda" if args.cuda else "cpu")
+
     model = EncodecModel.from_pretrained("facebook/encodec_32khz").to(device)
     processor = AutoProcessor.from_pretrained("facebook/encodec_32khz")
 
     codes = []
     for backing, lead in tqdm(examples):
-        lead_codes = tokenize(lead, processor, model)
-        backing_codes = tokenize(backing, processor, model)
+        lead_codes = tokenize(lead, processor, model, encodec_chunk_len)
+        backing_codes = tokenize(backing, processor, model, encodec_chunk_len)
         if lead_codes.shape != backing_codes.shape:
             print("\n\nWARNING: lead and backing codes have different shape")
         codes.append((backing_codes.cpu(), lead_codes.cpu()))

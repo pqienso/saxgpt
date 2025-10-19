@@ -18,7 +18,11 @@ if __name__ == "__main__":
         "--config",
         type=str,
         help="Path to the YAML configuration file",
-        default="config/data/main.yaml",
+    )
+    parser.add_argument(
+        "--cuda",
+        action="store_true",
+        help="Use CUDA for stem splitting"
     )
     args = parser.parse_args()
 
@@ -34,11 +38,13 @@ if __name__ == "__main__":
         n_splits = config["demucs"]["n_splits"]
         n_shifts = config["demucs"]["n_shifts"]
         n_jobs = config["demucs"]["n_jobs"]
+        normalize_before = config["demucs"]["normalize_before"]
+        normalize_after = config["demucs"]["normalize_after"]
     except KeyError as e:
         print(f"Error: Missing key in configuration file: {e}")
         raise
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if args.cuda else "cpu")
     print(f"Using device: {device}")
 
     dl_dest = Path(dl_dest_str).resolve()
@@ -69,6 +75,8 @@ if __name__ == "__main__":
         separator,
         stem_dest,
         n_splits=n_splits,
+        normalize_before=normalize_before,
+        normalize_after=normalize_after,
     )
 
     print("\n\nStem split complete. Dataset created.")

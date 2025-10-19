@@ -11,6 +11,7 @@ from .audio_util import get_audio_length, extract_windows_above_threshold
 
 tqdm.pandas()
 
+
 def update_index(metadata_path: Optional[Path], download_folder: Path) -> pd.DataFrame:
     if metadata_path is None:
         df = pd.DataFrame(
@@ -89,9 +90,8 @@ if __name__ == "__main__":
         "--config",
         type=str,
         help="Path to the YAML configuration file",
-        default="config/data/main.yaml",
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     with open(Path(args.config), "r") as file:
         config = yaml.safe_load(file)
