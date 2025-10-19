@@ -51,7 +51,13 @@ def download_youtube_wav(video_url: str, download_folder: Path) -> None:
 def extract_playlist_urls(playlist_url: str) -> List[str]:
     assert is_playlist_url(playlist_url), "URL must be a valid YouTube playlist"
 
-    with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True}) as ydl:
+    with yt_dlp.YoutubeDL(
+        {
+            "quiet": True,
+            "extract_flat": True,
+            "playlistend": None,
+        }
+    ) as ydl:
         info_dict = ydl.extract_info(playlist_url, download=False)
         video_urls = [entry["url"] for entry in info_dict["entries"]]
         return video_urls
@@ -79,3 +85,4 @@ def ingest_audio_url(youtube_url: str, download_folder: Path) -> None:
     for i, url in enumerate(video_urls):
         print(f"\n\n Downloading {i + 1} of {len(video_urls)}")
         download_youtube_wav(url, download_folder)
+

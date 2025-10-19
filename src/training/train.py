@@ -39,33 +39,6 @@ class MetricsTracker:
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.metrics_file = self.log_dir / "metrics.jsonl"
         self.best_val_loss = float("inf")
-        self._init_existing_file()
-
-    def _init_existing_file(self):
-        if not self.metrics_file.exists():
-            return
-
-        metrics = []
-        last_line = None
-
-        with open(self.metrics_file, "r") as f:
-            for i, line in enumerate(f):
-                metric = json.loads(line)
-                metrics.append(metric)
-                if "epoch_train_loss" in metric:
-                    last_line = i
-                if "epoch_val_loss" in metric:
-                    self.best_val_loss = min(
-                        self.best_val_loss,
-                        metric["epoch_val_loss"]
-                    )
-        if last_line is None:
-            return
-
-        metrics = metrics[:last_line + 1]
-        with open(self.metrics_file, "w") as f:
-            f.write("\n".join(metrics) + "\n")
-
 
     def log(self, epoch: int, step: int, metrics: Dict[str, float]):
         """Log metrics to file."""
