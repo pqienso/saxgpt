@@ -1,14 +1,14 @@
 # Data files
 *.wav
-data/
+/data/
 
 # Models
-models/
+/models/
 
 # Experiments
-experiments/*/checkpoints/
-experiments/*/logs/
-experiments/data/*/*.pt
+/experiments/*/checkpoints/
+/experiments/*/logs/
+/experiments/data/*/*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
