@@ -23,8 +23,8 @@ def augment_example(aug_dir: Path, example: Path, augmenter: AudioAugmenter):
             augmented_leads, augmented_backings, augmenter.aug_info
         ):
             aug_clip = {
-                "lead": augmented_lead,
-                "backing": augmented_backing,
+                "lead": augmented_lead.cpu(),
+                "backing": augmented_backing.cpu(),
                 "start": clip["start"],
                 "end": clip["end"],
             }
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         type=str,
         help="Path to the YAML configuration file",
     )
-    parser.add_argument("--rebuild", type=str, help="Restart augmentation")
+    parser.add_argument("--rebuild", action="store_true", help="Restart augmentation")
     args, _ = parser.parse_known_args()
 
     print("\n\n" + "=" * 20)
@@ -52,8 +52,8 @@ if __name__ == "__main__":
     with open(Path(args.config), "r") as file:
         config = yaml.safe_load(file)
     try:
-        clips_dir_str = config["data_paths"]["clips_path"]
-        aug_dir_str = config["data_paths"]["aug_path"]
+        clips_dir_str = config["data_paths"]["clips_dir"]
+        aug_dir_str = config["data_paths"]["aug_dir"]
 
         aug_cfg = config["augmentation"]
 
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     if args.rebuild:
         for example in aug_dir.glob("*.pt"):
             example.unlink()
-
+    
     if aug_cfg is None:
         aug_cfg = {
             "semitone_steps": [],

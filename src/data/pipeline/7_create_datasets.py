@@ -11,9 +11,10 @@ from ..util.dataset import get_tensor_dataset, train_test_split
 
 def get_all_codes(codes_dir: Path) -> List[Tuple[Tensor, Tensor]]:
     codes = []
-    for example_path in codes_dir.glob("*.wav"):
+    for example_path in codes_dir.glob("*.pt"):
         example = torch.load(example_path, weights_only=False)
-        codes.append((example["backing"], example["lead"]))
+        for clip in example:
+            codes.append((clip["backing"], clip["lead"]))
     return codes
 
 

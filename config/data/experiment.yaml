@@ -31,7 +31,6 @@ rms_window:
 
 augmentation:
   sample_rate: 32000
-  num_pitch_augs: 4
   semitone_steps: [-2, 2]
   tempo_ratios: [0.9, 1.1]
   n_fft: 4096

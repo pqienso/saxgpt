@@ -23,7 +23,7 @@ def tokenize_clips_in_example(
     for clip in tqdm(example, leave=False):
         clip["lead"] = tokenize(clip["lead"], **tokenize_args).cpu()
         clip["backing"] = tokenize(clip["backing"], **tokenize_args).cpu()
-    torch.save(codes_dir, example)
+    torch.save(example, codes_dir)
 
 
 if __name__ == "__main__":
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     with open(Path(args.config), "r") as file:
         config = yaml.safe_load(file)
     try:
-        aug_dir_str = config["data_paths"]["aug_path"]
+        aug_dir_str = config["data_paths"]["aug_dir"]
         codes_dir_str = config["data_paths"]["codes_dir"]
 
         encodec_chunk_len = config["encodec"]["chunk_len_s"]

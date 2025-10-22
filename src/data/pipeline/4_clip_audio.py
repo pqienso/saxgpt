@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import pandas as pd
 
-from .audio_util import trim_wav_file
+from ..util.audio_util import trim_wav_file
 
 
 def create_clips(stems_dir: Path, clips_dir: Path, metadata_entry: Dict):

@@ -1,4 +1,4 @@
-url: 'https://youtube.com/playlist?list=PLQquVh8U-z89SjTFOMgGVCuYfv9M-cBdG&si=h2-fwdCY2vQOM-lK'
+url: 'https://youtube.com/playlist?list=PLQquVh8U-z89SjTFOMgGVCuYfv9M-cBdG'
 
 data_paths:
   dl_dir: 'data/main/1_download/'
@@ -8,6 +8,13 @@ data_paths:
   aug_dir: 'data/main/5_aug_clips/'
   codes_dir: 'data/main/6_codes/'
   datasets_dir: 'data/main/7_datasets/'
+
+intermediates:
+   keep_dl: true
+   keep_stems: true
+   keep_clips: false
+   keep_aug_clips: true
+   keep_codes: true
 
 demucs:
   n_splits: 2
@@ -22,14 +29,12 @@ rms_window:
   rms_frame_length_seconds: 10.0
   rms_stride_seconds: 0.2
 
-augmentation: null
-# augmentation:
-#   sample_rate: 32000
-#   num_pitch_augs: 4
-#   semitone_steps: [-2, 2]
-#   tempo_ratios: [0.9, 1.1]
-#   n_fft: 4096
-#   hop_length: 512
+augmentation:
+  sample_rate: 32000
+  semitone_steps: [-2, 2]
+  tempo_ratios: [1.1, 1.2]
+  n_fft: 4096
+  hop_length: 512
 
 encodec:
   chunk_len_s: 25
@@ -43,4 +48,3 @@ dataset:
   seq_len: 1500 # 30s * 50 tokens / s
   stride: 750
   padding_idx: 2048
-
