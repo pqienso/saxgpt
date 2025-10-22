@@ -3,7 +3,7 @@ import torchaudio
 import torch
 import demucs.api
 
-from .audio_util import mix_audio_values, mono_resample_audio, normalize_lufs
+from .audio_util import mix_audio_values, convert_mono, resample, normalize_lufs
 
 
 def stem_split_audio(
@@ -14,6 +14,7 @@ def stem_split_audio(
     n_splits: int = 1,
     normalize_before: bool = True,
     normalize_after: bool = True,
+    output_mono: bool = True
 ) -> None:
     audio_name = wav_file_path.name
     sax_wav_path = download_folder / f"sax_{audio_name}"
@@ -36,15 +37,19 @@ def stem_split_audio(
         )
         sax_audio = mix_audio_values(separated, ["vocals", "other"])
 
-    rhythm_audio = mono_resample_audio(rhythm_audio, separator.samplerate, final_sr)
-    if normalize_after:
-        rhythm_audio = normalize_lufs(audio, final_sr)
-    torchaudio.save(rhythm_wav_path, rhythm_audio, final_sr)
+    if output_mono:
+        rhythm_audio = convert_mono(rhythm_audio)
+        sax_audio = convert_mono(sax_audio)
+    
+    rhythm_audio = resample(rhythm_audio, separator.samplerate, final_sr)
+    sax_audio = resample(sax_audio, separator.samplerate, final_sr)
 
-    sax_audio = mono_resample_audio(sax_audio, separator.samplerate, final_sr)
     if normalize_after:
-        rhythm_audio = normalize_lufs(audio, final_sr)
+        rhythm_audio = normalize_lufs(rhythm_audio, final_sr)
+        sax_audio = normalize_lufs(sax_audio, final_sr)
+    
     torchaudio.save(sax_wav_path, sax_audio, final_sr)
+    torchaudio.save(rhythm_wav_path, rhythm_audio, final_sr)
 
 
 def stem_split_all_in_folder(
@@ -56,9 +61,9 @@ def stem_split_all_in_folder(
     normalize_before: bool = True,
     normalize_after: bool = True,
 ) -> None:
-    audio_files = audio_folder.glob("*.wav")
-    for index, audio_file in enumerate(audio_files):
-        print(f"\n\nSplitting audio file {index + 1}")
+    num_files = len(list(audio_folder.glob("*.wav")))
+    for index, audio_file in enumerate(audio_folder.glob("*.wav")):
+        print(f"\n\nSplitting audio file {index + 1}/{num_files}")
         stem_split_audio(
             audio_file,
             separator,

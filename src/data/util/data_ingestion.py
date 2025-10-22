@@ -79,4 +79,3 @@ def ingest_audio_url(youtube_url: str, download_folder: Path) -> None:
     for i, url in enumerate(video_urls):
         print(f"\n\n Downloading {i + 1} of {len(video_urls)}")
         download_youtube_wav(url, download_folder)
-

@@ -25,7 +25,7 @@ def tokenize(
             int(chunk_len_s * processor.sampling_rate),
             dim=-1,
         )
-    
+
     code_chunks = []
     for chunk in chunks:
         inputs = processor(

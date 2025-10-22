@@ -8,11 +8,13 @@ from pathlib import Path
 import pyloudnorm
 
 
-def mono_resample_audio(audio: torch.Tensor, old_sr: int, final_sr: int):
-    audio = audio.mean(dim=0, keepdim=True)
+def convert_mono(audio: torch.Tensor):
+    return audio.mean(dim=0, keepdim=True)
+    
+
+def resample(audio: torch.Tensor, old_sr: int, final_sr: int):
     resampler = torchaudio.transforms.Resample(orig_freq=old_sr, new_freq=final_sr)
     return resampler(audio)
-
 
 def normalize_lufs(
     waveform: torch.Tensor, sr: int, target_lufs: float = -14.0

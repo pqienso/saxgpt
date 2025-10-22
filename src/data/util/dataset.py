@@ -1,11 +1,14 @@
 import torch
 from torch import Tensor
 from torch.utils.data import TensorDataset
-import torch.nn.functional as F
 from typing import List, Tuple
 import random
 
+from .codes_interleaving import add_delay_interleaving
+
+
 EXAMPLE_SIZE = 30 * 50  # 30s: 50 tokens = 1s
+
 
 def train_test_split(
     codes: List[Tuple[Tensor, Tensor]], test: float, val: float
@@ -42,31 +45,6 @@ def train_test_split(
         i += 1
 
     return train_dataset, val_dataset, test_dataset
-
-
-def add_delay_interleaving(
-    codes: Tensor, padding_idx: int = 2048
-) -> Tensor:
-    """[num_codebooks, seq_len] -> [num_codebooks, seq_len]"""
-    num_codebooks = len(codes)
-    new_codes = []
-    for index, stream in enumerate(codes):
-        new_codes.append(
-            F.pad(stream, (index + 1, num_codebooks - index), value=padding_idx)
-        )
-    return torch.stack(new_codes)
-
-
-def remove_delay_interleaving(codes: Tensor) -> Tensor:
-    """[num_codebooks, seq_len] -> [num_codebooks, seq_len]"""
-    num_codebooks = codes.shape[-2]
-    stream_length = codes.shape[-1]
-    new_codes = []
-    for index, stream in enumerate(codes):
-        new_codes.append(
-            torch.narrow(stream, -1, 1 + index, stream_length - (num_codebooks - 1) - 2)
-        )
-    return torch.stack(new_codes)
 
 
 def get_tensor_dataset(

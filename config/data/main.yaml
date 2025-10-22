@@ -1,11 +1,13 @@
 url: 'https://youtube.com/playlist?list=PLQquVh8U-z89SjTFOMgGVCuYfv9M-cBdG&si=h2-fwdCY2vQOM-lK'
 
 data_paths:
-  dl_dest: 'data/main/download/'
-  stem_dest: 'data/main/stems/'
-  metadata_path: 'data/main/metadata.csv'
-  codes_dest: 'data/main/codes.pt'
-  datasets_dest: 'data/main/datasets/'
+  dl_dir: 'data/main/1_download/'
+  stems_dir: 'data/main/2_stems/'
+  metadata_path: 'data/main/3_metadata.csv'
+  clips_dir: 'data/main/4_clips/'
+  aug_dir: 'data/main/5_aug_clips/'
+  codes_dir: 'data/main/6_codes/'
+  datasets_dir: 'data/main/7_datasets/'
 
 demucs:
   n_splits: 2
@@ -14,30 +16,31 @@ demucs:
   normalize_before: true
   normalize_after: true
 
-encodec:
-  chunk_len_s: 25
-
 rms_window:
   rms_threshold: 0.05
   min_window_size_seconds: 30.0
   rms_frame_length_seconds: 10.0
   rms_stride_seconds: 0.2
 
+augmentation: null
+# augmentation:
+#   sample_rate: 32000
+#   num_pitch_augs: 4
+#   semitone_steps: [-2, 2]
+#   tempo_ratios: [0.9, 1.1]
+#   n_fft: 4096
+#   hop_length: 512
+
+encodec:
+  chunk_len_s: 25
+
 train_test_split:
   seed: 67
   test: 0.1
   val: 0.1
 
-augmentation: null
-# augmentation:
-#   sample_rate: 32000
-#   num_pitch_augs: 4
-#   pitch_step_size: 2
-#   tempo_ratios: [0.8, 0.9, 1.1, 1.25]
-#   n_fft: 4096
-#   hop_length: 512
-
 dataset:
-  seq_len: 1500 # 30 * 50
-  stride: 150
+  seq_len: 1500 # 30s * 50 tokens / s
+  stride: 750
   padding_idx: 2048
+
