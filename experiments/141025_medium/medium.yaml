@@ -49,10 +49,10 @@ training:
     weight_decay: 0.001
   
   # Logging and checkpointing
-  output_dir: "experiments/141025_medium"
+  output_dir: "experiments/models/141025_medium"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "experiments/141025_medium/checkpoints/checkpoint_interrupt.pt"
+  resume_from_checkpoint: "experiments/models/141025_medium/checkpoints/checkpoint_interrupt.pt"

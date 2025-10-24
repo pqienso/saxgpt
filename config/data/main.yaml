@@ -46,5 +46,5 @@ train_test_split:
 
 dataset:
   seq_len: 1500 # 30s * 50 tokens / s
-  stride: 750
+  stride: 150
   padding_idx: 2048
