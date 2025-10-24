@@ -1,3 +1,5 @@
+# Attempt to overfit on a full dataset.
+
 data:
   train_path: "experiments/data/111025/train.pt"
   val_path: "experiments/data/111025/val.pt"

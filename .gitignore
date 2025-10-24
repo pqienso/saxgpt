@@ -6,8 +6,8 @@
 /models/
 
 # Experiments
-/experiments/*/checkpoints/
-/experiments/*/logs/
+/experiments/models/*/checkpoints/
+/experiments/models/*/logs/
 /experiments/data/*/*.pt
 
 # Byte-compiled / optimized / DLL files

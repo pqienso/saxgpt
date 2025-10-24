@@ -18,7 +18,6 @@ import yaml
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -48,6 +47,9 @@ from .util.distributed import (
     setup_distributed,
     cleanup_distributed,
     setup_device,
+    print_rank0,
+    reduce_tensor,
+    barrier,
 )
 from .lr_scheduling import create_scheduler
 
@@ -88,25 +90,6 @@ class MetricsTracker:
             self.best_val_loss = val_loss
             return True
         return False
-
-
-def print_rank0(msg: str):
-    """Print only on rank 0."""
-    if get_rank() == 0:
-        print(msg)
-
-
-def reduce_tensor(tensor: torch.Tensor) -> torch.Tensor:
-    """
-    Reduce tensor across all GPUs. Returns average.
-    For single GPU, returns the tensor unchanged.
-    """
-    if not is_distributed():
-        return tensor
-
-    rt = tensor.clone()
-    dist.all_reduce(rt, op=dist.ReduceOp.AVG)
-    return rt
 
 
 def train_epoch(
@@ -301,8 +284,7 @@ def train(config_path: str):
     validate_config(config)
 
     print_rank0("Configuration loaded:")
-    if rank == 0:
-        print(yaml.dump(config, default_flow_style=False))
+    print_rank0(yaml.dump(config, default_flow_style=False))
 
     # Setup device
     if world_size > 1:
@@ -317,9 +299,7 @@ def train(config_path: str):
         checkpoint_dir = output_dir / "checkpoints"
         checkpoint_dir.mkdir(exist_ok=True)
 
-    # Wait for rank 0 to create directories
-    if is_distributed():
-        dist.barrier()
+    barrier()
 
     output_dir = Path(config["training"]["output_dir"])
     checkpoint_dir = output_dir / "checkpoints"
@@ -354,9 +334,7 @@ def train(config_path: str):
     # Create model
     model = create_model(config)
     model = model.to(device)
-
-    if rank == 0:
-        print_model_info(model)
+    print_model_info(model)
 
     # Wrap with DDP if distributed
     if world_size > 1:
@@ -381,8 +359,8 @@ def train(config_path: str):
     total_training_steps = steps_per_epoch * config["training"]["num_epochs"]
 
     scheduler = create_scheduler(optimizer, config, total_training_steps)
-    if rank == 0 and scheduler:
-        print(
+    if scheduler:
+        print_rank0(
             f"Using learning rate scheduler: {config['training']['scheduler']['type']}"
         )
 
@@ -401,26 +379,23 @@ def train(config_path: str):
             print_rank0(
                 f"Resumed from checkpoint: epoch {start_epoch}, step {global_step}"
             )
-        elif rank == 0:
-            print(f"Checkpoint not found: {checkpoint_path}")
-            print("Starting training from scratch")
+        else:
+            print_rank0(f"Checkpoint not found: {checkpoint_path}")
+            print_rank0("Starting training from scratch")
 
-    # Synchronize all processes
-    if is_distributed():
-        dist.barrier()
+    barrier()
 
     # Training loop
     num_epochs = config["training"]["num_epochs"]
     save_interval = config["training"].get("save_interval", 1)
 
-    if rank == 0:
-        mode = f"DDP on {world_size} GPUs" if world_size > 1 else "Single GPU"
-        print(f"\nStarting training for {num_epochs} epochs ({mode})...")
-        print(f"Batch size per GPU: {batch_size}")
-        effective_bs = (
-            batch_size * world_size * config["training"]["gradient_accumulation_steps"]
-        )
-        print(f"Effective batch size: {effective_bs}")
+    mode = f"DDP on {world_size} GPUs" if world_size > 1 else "Single GPU"
+    print_rank0(f"\nStarting training for {num_epochs} epochs ({mode})...")
+    print_rank0(f"Batch size per GPU: {batch_size}")
+    effective_bs = (
+        batch_size * world_size * config["training"]["gradient_accumulation_steps"]
+    )
+    print_rank0(f"Effective batch size: {effective_bs}")
 
     try:
         for epoch in range(start_epoch, num_epochs):
@@ -471,7 +446,7 @@ def train(config_path: str):
 
                 is_best = metrics_tracker.update_best(val_loss)
                 if is_best:
-                    print("New best validation loss!")
+                    print_rank0("New best validation loss!")
                     best_path = checkpoint_dir / "best_model.pt"
                     save_checkpoint(
                         model_for_saving,
@@ -510,16 +485,13 @@ def train(config_path: str):
                         config,
                         checkpoint_path,
                     )
-
-            # Synchronize after each epoch
-            if is_distributed():
-                dist.barrier()
+            barrier()
 
     except KeyboardInterrupt:
         if rank == 0:
-            print("\n\n" + "=" * 80)
-            print("Training interrupted by user!")
-            print("=" * 80)
+            print_rank0("\n\n" + "=" * 80)
+            print_rank0("Training interrupted by user!")
+            print_rank0("=" * 80)
 
             interrupt_path = checkpoint_dir / "checkpoint_interrupt.pt"
             save_checkpoint(
@@ -539,12 +511,11 @@ def train(config_path: str):
 
     finally:
         cleanup_distributed()
-
-    if rank == 0:
-        print("\n" + "=" * 80)
-        print("Training complete!")
-        print(f"Best validation loss: {metrics_tracker.best_val_loss:.4f}")
-        print("=" * 80)
+    
+    print_rank0("\n" + "=" * 80)
+    print_rank0("Training complete!")
+    print_rank0(f"Best validation loss: {metrics_tracker.best_val_loss:.4f}")
+    print_rank0("=" * 80)
 
 
 def train_worker(rank: int, world_size: int, config_path: Path):
@@ -586,7 +557,7 @@ if __name__ == "__main__":
         if world_size < 1:
             raise RuntimeError("No GPUs available for DDP training")
 
-        print(f"Starting DDP training with spawn on {world_size} GPUs")
+        print_rank0(f"Starting DDP training with spawn on {world_size} GPUs")
 
         torch.multiprocessing.spawn(
             train_worker,

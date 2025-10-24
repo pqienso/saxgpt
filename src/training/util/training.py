@@ -9,7 +9,7 @@ from torch.utils.data.distributed import DistributedSampler
 from pathlib import Path
 from typing import Dict, Tuple, Optional
 
-from .distributed import is_main_process, is_distributed, get_world_size, get_rank
+from .distributed import is_main_process, is_distributed, get_world_size, get_rank, print_rank0
 from ...model.transformer import EncoderDecoderTransformer
 
 
@@ -66,7 +66,7 @@ def create_optimizer(model: torch.nn.Module, config: dict) -> torch.optim.Optimi
         raise ValueError(f"Unknown optimizer type: {optimizer_config['type']}")
 
     if is_main_process():
-        print(f"Created optimizer: {optimizer_type}")
+        print_rank0(f"Created optimizer: {optimizer_type}")
 
     return optimizer
 
@@ -127,7 +127,7 @@ def load_dataset(data_path: str, dataset_name: str = "dataset") -> TensorDataset
         TensorDataset
     """
     data_path = Path(data_path)
-    print(f"Loading {dataset_name} from: {data_path}")
+    print_rank0(f"Loading {dataset_name} from: {data_path}")
     data = torch.load(data_path, weights_only=False)
 
     # Handle both tuple and TensorDataset formats
@@ -136,7 +136,7 @@ def load_dataset(data_path: str, dataset_name: str = "dataset") -> TensorDataset
     else:
         dataset = data
 
-    print(f"{dataset_name.capitalize()} size: {len(dataset)}")
+    print_rank0(f"{dataset_name.capitalize()} size: {len(dataset)}")
     return dataset
 
 
@@ -237,19 +237,19 @@ def print_model_info(model: torch.nn.Module, rank: int = None):
         p.numel() for p in actual_model.parameters() if p.requires_grad
     )
 
-    print("\nModel Information:")
-    print(f"  Total parameters:     {total_params:,}")
-    print(f"  Trainable parameters: {trainable_params:,}")
-    print(f"  Non-trainable params: {total_params - trainable_params:,}")
+    print_rank0("\nModel Information:")
+    print_rank0(f"  Total parameters:     {total_params:,}")
+    print_rank0(f"  Trainable parameters: {trainable_params:,}")
+    print_rank0(f"  Non-trainable params: {total_params - trainable_params:,}")
 
     # Calculate model size in MB
     param_size = sum(p.numel() * p.element_size() for p in actual_model.parameters())
     buffer_size = sum(b.numel() * b.element_size() for b in actual_model.buffers())
     size_mb = (param_size + buffer_size) / 1024 / 1024
-    print(f"  Model size:           {size_mb:.2f} MB")
+    print_rank0(f"  Model size:           {size_mb:.2f} MB")
 
     if hasattr(model, "module"):
-        print("  DDP wrapped:          Yes")
+        print_rank0("  DDP wrapped:          Yes")
 
 
 def calculate_accuracy(
@@ -305,7 +305,7 @@ def load_checkpoint_for_training(
         rank = get_rank()
 
     if rank == 0:
-        print(f"Loading checkpoint from {checkpoint_path}")
+        print_rank0(f"Loading checkpoint from {checkpoint_path}")
 
     # Load checkpoint
     map_location = (
@@ -334,7 +334,7 @@ def load_checkpoint_for_training(
     metrics = checkpoint.get("metrics", {})
 
     if rank == 0:
-        print(f"Resumed from epoch {epoch}, step {step}")
+        print_rank0(f"Resumed from epoch {epoch}, step {step}")
 
     return epoch, step, metrics
 
@@ -356,7 +356,7 @@ def load_checkpoint_for_inference(
     Returns:
         Checkpoint dictionary with metadata
     """
-    print(f"Loading checkpoint from {checkpoint_path}")
+    print_rank0(f"Loading checkpoint from {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     # Handle both DDP and non-DDP saved models
@@ -382,11 +382,11 @@ def load_checkpoint_for_inference(
     step = checkpoint.get("step", -1)
     metrics = checkpoint.get("metrics", {})
 
-    print("Checkpoint info:")
-    print(f"  Epoch: {epoch}")
-    print(f"  Step: {step}")
+    print_rank0("Checkpoint info:")
+    print_rank0(f"  Epoch: {epoch}")
+    print_rank0(f"  Step: {step}")
     if metrics:
-        print(f"  Metrics: {metrics}")
+        print_rank0(f"  Metrics: {metrics}")
 
     return checkpoint
 
@@ -437,7 +437,7 @@ def save_checkpoint(
         checkpoint["scheduler_state_dict"] = scheduler.state_dict()
 
     torch.save(checkpoint, checkpoint_path)
-    print(f"Checkpoint saved to {checkpoint_path}")
+    print_rank0(f"Checkpoint saved to {checkpoint_path}")
 
 
 def validate_config(config: Dict):
