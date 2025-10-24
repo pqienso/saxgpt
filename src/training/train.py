@@ -124,7 +124,7 @@ def train_epoch(
     optimizer.zero_grad()
 
     # Only show progress bar on rank 0
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch + 1}") if rank == 0 else dataloader
+    pbar = tqdm(dataloader) if rank == 0 else dataloader
 
     for batch_idx, batch in enumerate(pbar):
         src, tgt = batch
