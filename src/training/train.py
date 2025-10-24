@@ -547,6 +547,15 @@ def train(config_path: str):
         print("=" * 80)
 
 
+def train_worker(rank: int, world_size: int, config_path: Path):
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "29500"
+    os.environ["RANK"] = str(rank)
+    os.environ["LOCAL_RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
+    train(config_path)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -578,14 +587,6 @@ if __name__ == "__main__":
             raise RuntimeError("No GPUs available for DDP training")
 
         print(f"Starting DDP training with spawn on {world_size} GPUs")
-
-        def train_worker(rank, world_size, config_path):
-            os.environ["MASTER_ADDR"] = "localhost"
-            os.environ["MASTER_PORT"] = "29500"
-            os.environ["RANK"] = str(rank)
-            os.environ["LOCAL_RANK"] = str(rank)
-            os.environ["WORLD_SIZE"] = str(world_size)
-            train(config_path)
 
         torch.multiprocessing.spawn(
             train_worker,
