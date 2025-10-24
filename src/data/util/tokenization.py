@@ -37,7 +37,9 @@ def tokenize(
         output = model.encode(
             inputs["input_values"].to(device), inputs["padding_mask"].to(device)
         )
-        code_chunks.append(output.audio_codes.squeeze().cpu())
+        # (nb_frames, batch_size, nb_quantizers, frame_len) -> (nb_quantizers, frame_len)
+        audio_codes = output.audio_codes.squeeze(dim=(0, 1))
+        code_chunks.append(audio_codes.cpu())
 
     codes = torch.cat(code_chunks, dim=-1)
     return codes

@@ -360,8 +360,8 @@ def train(config_path: str):
             # Check if best model
             is_best = metrics_tracker.update_best(val_loss)
             if is_best:
-                print("🌟 New best validation loss!")
-                best_path = checkpoint_dir / "best_model.pt"
+                print("New best validation loss!")
+                best_path = checkpoint_dir / "best.pt"
                 save_checkpoint(
                     model,
                     optimizer,
@@ -381,7 +381,7 @@ def train(config_path: str):
 
             # Save checkpoint
             if (epoch + 1) % save_interval == 0:
-                checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pt"
+                checkpoint_path = checkpoint_dir / f"epoch_{epoch + 1}.pt"
                 save_checkpoint(
                     model,
                     optimizer,
@@ -401,7 +401,7 @@ def train(config_path: str):
 
     except KeyboardInterrupt:
         print("\n\n" + "=" * 80)
-        print("Training interrupted by user!")
+        print("Training interrupted by user")
         print("=" * 80)
 
         # Save interrupt checkpoint
