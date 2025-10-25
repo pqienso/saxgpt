@@ -1,8 +1,11 @@
+# New medium config, run on full dataset with augmentation and normalization.
+# I realized my previous medium configs were way too narrow and deep, yielding
+# very slow convergence.
+# ~ 31M parameter model.
 data:
-  train_path: "data/main/datasets/train.pt"
-  val_path: "data/main/datasets/val.pt"
+  train_path: "data/main/7_datasets/train.pt"
+  val_path: "data/main/7_datasets/val.pt"
 
-# 31M param model
 model:
   vocab_size: 2049
   num_codebooks: 4
@@ -37,11 +40,10 @@ training:
     eps: 1.0e-9
     weight_decay: 0.01
   
-  # Logging and checkpointing
-  output_dir: "models/medium"
-  log_interval: 2           # Log metrics every N steps
-  save_interval: 50      # Save checkpoint every N epochs
-  num_workers: 8             # DataLoader workers
+  output_dir: "experiments/models/241025_medium/"
+  log_interval: 10
+  save_interval: 20
+  num_workers: 2
   
-  # Resume training (optional)
-  resume_from_checkpoint: "models/medium/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/models/241025_medium/checkpoints/checkpoint_interrupt.pt"
+

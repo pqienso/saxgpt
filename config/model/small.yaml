@@ -2,15 +2,15 @@ data:
   train_path: "data/main/datasets/train.pt"
   val_path: "data/main/datasets/val.pt"
 
-# 4.8M Param model
+# 15M Param model
 model:
   vocab_size: 2049
   num_codebooks: 4
-  d_model: 128
-  nhead: 8
+  d_model: 256
+  nhead: 4
   num_encoder_layers: 6
   num_decoder_layers: 6
-  dim_feedforward: 512
+  dim_feedforward: 1024
   dropout: 0.3
   activation: "relu"
   norm_first: true

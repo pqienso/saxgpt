@@ -60,12 +60,12 @@ class MetricsTracker:
     def __init__(self, log_dir: Path):
         self.rank = get_rank()
         self.is_main = self.rank == 0
+        self.best_val_loss = float("inf")
 
         if self.is_main:
             self.log_dir = Path(log_dir)
             self.log_dir.mkdir(parents=True, exist_ok=True)
             self.metrics_file = self.log_dir / "metrics.jsonl"
-            self.best_val_loss = float("inf")
 
     def log(self, epoch: int, step: int, metrics: Dict[str, float]):
         """Log metrics to file (only on rank 0)."""

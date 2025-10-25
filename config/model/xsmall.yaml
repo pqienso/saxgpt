@@ -1,18 +1,16 @@
-# Sanity check to make sure our new dataset and training refactoring has
-# not affected the correctness of our model.
-# Overfitting on subset of new data.
 data:
-  train_path: "experiments/data/241025/test.pt"
-  val_path: "experiments/data/241025/test.pt"
+  train_path: "data/main/datasets/train.pt"
+  val_path: "data/main/datasets/val.pt"
 
+# 3.9M param model
 model:
   vocab_size: 2049
   num_codebooks: 4
-  d_model: 512
-  nhead: 8
+  d_model: 128
+  nhead: 2
   num_encoder_layers: 4
   num_decoder_layers: 4
-  dim_feedforward: 2048
+  dim_feedforward: 512
   dropout: 0.0
   activation: "relu"         
   norm_first: true          
