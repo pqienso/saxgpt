@@ -41,10 +41,11 @@ encodec:
 
 train_test_split:
   seed: 67
-  test: 0.1
-  val: 0.1
+  test: 0.005
+  val: 0.005
 
 dataset:
   seq_len: 1500 # 30s * 50 tokens / s
-  stride: 150
+  stride: 300
   padding_idx: 2048
+

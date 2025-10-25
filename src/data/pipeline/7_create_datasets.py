@@ -9,11 +9,13 @@ from typing import List, Tuple
 from ..util.dataset import get_tensor_dataset, train_test_split
 
 
-def get_all_codes(codes_dir: Path) -> List[Tuple[Tensor, Tensor]]:
+def get_all_codes(codes_dir: Path, exclude_aug: bool = False) -> List[Tuple[Tensor, Tensor]]:
     codes = []
     for example_path in codes_dir.glob("*.pt"):
         example = torch.load(example_path, weights_only=False)
         for clip in example:
+            if exclude_aug and (clip["semitone_steps"] != 0 or clip["tempo_ratio"] != 1):
+                continue
             codes.append((clip["backing"], clip["lead"]))
     return codes
 
@@ -27,6 +29,11 @@ if __name__ == "__main__":
         "--config",
         type=str,
         help="Path to the YAML configuration file",
+    )
+    parser.add_argument(
+        "--exclude-aug",
+        action="store_true",
+        help="Exclude augmented clips"
     )
     args, _ = parser.parse_known_args()
 
@@ -55,7 +62,7 @@ if __name__ == "__main__":
     datasets_dir = Path(datasets_dir_str)
     datasets_dir.mkdir(exist_ok=True)
 
-    codes = get_all_codes(codes_dir)
+    codes = get_all_codes(codes_dir, exclude_aug=args.exclude_aug)
 
     print("\n\nProducing dataset")
     print("Splitting train / test")

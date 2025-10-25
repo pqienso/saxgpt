@@ -1,15 +1,18 @@
+# Sanity check to make sure our new dataset and training refactoring has
+# not affected the correctness of our model.
+# Overfitting on subset of new data.
 data:
-  train_path: "data/experiment/datasets/train.pt"
-  val_path: "data/experiment/datasets/val.pt"
+  train_path: "experiments/data/241025/train.pt"
+  val_path: "experiments/data/241025/val.pt"
 
 model:
   vocab_size: 2049
   num_codebooks: 4
-  d_model: 512
+  d_model: 128
   nhead: 8
   num_encoder_layers: 4
   num_decoder_layers: 4
-  dim_feedforward: 2048
+  dim_feedforward: 512
   dropout: 0.0
   activation: "relu"         
   norm_first: true          
@@ -21,8 +24,9 @@ model:
 training:
   num_epochs: 10000
   # Effective batch size = batch_size * gradient_accumulation_steps
-  batch_size: 4
-  gradient_accumulation_steps: 4
+  batch_size: 16
+  gradient_accumulation_steps: 1
+  # max_grad_norm: 2.0
   
   # Learning rate scheduler
   scheduler:
@@ -49,10 +53,10 @@ training:
     weight_decay: 0.0
   
   # Logging and checkpointing
-  output_dir: "models/experiment"
+  output_dir: "experiments/models/241025_xsmall/"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "models/experiment/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/models/241025_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
