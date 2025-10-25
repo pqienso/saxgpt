@@ -369,8 +369,12 @@ def train(config_path: str):
     # Load checkpoint if resuming
     start_epoch = 0
     global_step = 0
-    default_checkpoint_path = Path(config["training"]["output_dir"]) / "checkpoints" / "interrupt.pt"
-    checkpoint_path = config["training"].get("resume_from_checkpoint") or default_checkpoint_path
+    default_checkpoint_path = (
+        Path(config["training"]["output_dir"]) / "checkpoints" / "interrupt.pt"
+    )
+    checkpoint_path = Path(
+        config["training"].get("resume_from_checkpoint") or default_checkpoint_path
+    )
     if checkpoint_path.exists():
         start_epoch, global_step, metrics = load_checkpoint_for_training(
             model_for_saving, optimizer, scaler, scheduler, checkpoint_path, device
@@ -380,9 +384,7 @@ def train(config_path: str):
             metrics.get("best_val_loss", float("inf")),
         )
         start_epoch += 1
-        print_rank0(
-            f"Resumed from checkpoint: epoch {start_epoch}, step {global_step}"
-        )
+        print_rank0(f"Resumed from checkpoint: epoch {start_epoch}, step {global_step}")
     else:
         print_rank0(f"Checkpoint not found: {checkpoint_path}")
         print_rank0("Starting training from scratch")
@@ -463,7 +465,7 @@ def train(config_path: str):
                         "val_accuracy": val_acc,
                     },
                     config,
-                    checkpoint_dir / "latest.pt"
+                    checkpoint_dir / "latest.pt",
                 )
                 if is_best:
                     print_rank0("New best validation loss!")
@@ -481,7 +483,7 @@ def train(config_path: str):
                             "val_accuracy": val_acc,
                         },
                         config,
-                        checkpoint_dir / "best.pt"
+                        checkpoint_dir / "best.pt",
                     )
 
                 if (epoch + 1) % save_interval == 0:
@@ -499,7 +501,7 @@ def train(config_path: str):
                             "val_accuracy": val_acc,
                         },
                         config,
-                        checkpoint_dir / f"epoch_{epoch + 1}.pt"
+                        checkpoint_dir / f"epoch_{epoch + 1}.pt",
                     )
             barrier()
 
