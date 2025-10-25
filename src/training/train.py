@@ -369,19 +369,23 @@ def train(config_path: str):
     # Load checkpoint if resuming
     start_epoch = 0
     global_step = 0
-    if config["training"].get("resume_from_checkpoint"):
-        checkpoint_path = Path(config["training"]["resume_from_checkpoint"])
-        if checkpoint_path.exists():
-            start_epoch, global_step, _ = load_checkpoint_for_training(
-                model_for_saving, optimizer, scaler, scheduler, checkpoint_path, device
-            )
-            start_epoch += 1
-            print_rank0(
-                f"Resumed from checkpoint: epoch {start_epoch}, step {global_step}"
-            )
-        else:
-            print_rank0(f"Checkpoint not found: {checkpoint_path}")
-            print_rank0("Starting training from scratch")
+    default_checkpoint_path = Path(config["training"]["output_dir"]) / "checkpoints" / "interrupt.pt"
+    checkpoint_path = config["training"].get("resume_from_checkpoint") or default_checkpoint_path
+    if checkpoint_path.exists():
+        start_epoch, global_step, metrics = load_checkpoint_for_training(
+            model_for_saving, optimizer, scaler, scheduler, checkpoint_path, device
+        )
+        metrics_tracker.best_val_loss = min(
+            metrics_tracker.best_val_loss,
+            metrics.get("best_val_loss", float("inf")),
+        )
+        start_epoch += 1
+        print_rank0(
+            f"Resumed from checkpoint: epoch {start_epoch}, step {global_step}"
+        )
+    else:
+        print_rank0(f"Checkpoint not found: {checkpoint_path}")
+        print_rank0("Starting training from scratch")
 
     barrier()
 
@@ -445,9 +449,24 @@ def train(config_path: str):
                 )
 
                 is_best = metrics_tracker.update_best(val_loss)
+                save_checkpoint(
+                    model_for_saving,
+                    optimizer,
+                    scaler,
+                    scheduler,
+                    epoch,
+                    global_step,
+                    {
+                        "train_loss": train_loss,
+                        "train_accuracy": train_acc,
+                        "val_loss": val_loss,
+                        "val_accuracy": val_acc,
+                    },
+                    config,
+                    checkpoint_dir / "latest.pt"
+                )
                 if is_best:
                     print_rank0("New best validation loss!")
-                    best_path = checkpoint_dir / "best_model.pt"
                     save_checkpoint(
                         model_for_saving,
                         optimizer,
@@ -462,13 +481,10 @@ def train(config_path: str):
                             "val_accuracy": val_acc,
                         },
                         config,
-                        best_path,
+                        checkpoint_dir / "best.pt"
                     )
 
                 if (epoch + 1) % save_interval == 0:
-                    checkpoint_path = (
-                        checkpoint_dir / f"checkpoint_epoch_{epoch + 1}.pt"
-                    )
                     save_checkpoint(
                         model_for_saving,
                         optimizer,
@@ -483,7 +499,7 @@ def train(config_path: str):
                             "val_accuracy": val_acc,
                         },
                         config,
-                        checkpoint_path,
+                        checkpoint_dir / f"epoch_{epoch + 1}.pt"
                     )
             barrier()
 
@@ -493,7 +509,7 @@ def train(config_path: str):
             print_rank0("Training interrupted by user!")
             print_rank0("=" * 80)
 
-            interrupt_path = checkpoint_dir / "checkpoint_interrupt.pt"
+            interrupt_path = checkpoint_dir / "interrupt.pt"
             save_checkpoint(
                 model_for_saving,
                 optimizer,
@@ -502,8 +518,13 @@ def train(config_path: str):
                 epoch,
                 global_step,
                 {
-                    "train_loss": train_loss if "train_loss" in locals() else 0.0,
-                    "val_loss": val_loss if "val_loss" in locals() else 0.0,
+                    "train_loss": train_loss
+                    if "train_loss" in locals()
+                    else float("inf"),
+                    "val_loss": val_loss if "val_loss" in locals() else float("inf"),
+                    "best_val_loss": metrics_tracker.best_val_loss
+                    if "metrics_tracker" in locals()
+                    else float("inf"),
                 },
                 config,
                 interrupt_path,
@@ -511,7 +532,7 @@ def train(config_path: str):
 
     finally:
         cleanup_distributed()
-    
+
     print_rank0("\n" + "=" * 80)
     print_rank0("Training complete!")
     print_rank0(f"Best validation loss: {metrics_tracker.best_val_loss:.4f}")
