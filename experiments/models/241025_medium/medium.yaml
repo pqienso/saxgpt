@@ -26,6 +26,14 @@ training:
   batch_size: 4
   gradient_accumulation_steps: 8
   
+  scheduled_sampling:
+    start_epoch: 50
+    end_epoch: 175
+    start_prob: 0.0
+    end_prob: 0.35
+    sampling_strategy: "inverse_sigmoid" # linear, exponential
+  # scheduled_sampling: null
+  
   scheduler:
     type: "cosine"
     warmup_steps: 1000

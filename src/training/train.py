@@ -29,17 +29,20 @@ from tqdm import tqdm
 import json
 from datetime import datetime
 
-from .util.training import (
-    load_config,
-    create_model,
-    load_datasets,
-    create_dataloader,
-    print_model_info,
-    calculate_accuracy,
+from .util.checkpointing import (
     save_checkpoint,
     load_checkpoint_for_training,
+)
+from .util.config_model import (
+    load_config,
+    create_model,
     create_optimizer,
     validate_config,
+    print_model_info,
+)
+from .util.data import (
+    load_datasets,
+    create_dataloader,
 )
 from .util.distributed import (
     get_rank,
@@ -51,7 +54,11 @@ from .util.distributed import (
     reduce_tensor,
     barrier,
 )
-from .lr_scheduling import create_scheduler
+from .util.scheduled_sampling import (
+    create_scheduled_sampling_strategy,
+    ScheduledSamplingStrategy,
+)
+from .util.lr_scheduling import create_scheduler
 
 
 class MetricsTracker:
@@ -92,6 +99,35 @@ class MetricsTracker:
         return False
 
 
+def calculate_accuracy(
+    logits: torch.Tensor, targets: torch.Tensor, padding_idx: int
+) -> float:
+    """
+    Calculate token-level accuracy, ignoring padding tokens.
+
+    Args:
+        logits: Model output logits [B, C, T, V]
+        targets: Target tokens [B, C, T]
+        padding_idx: Index to ignore in accuracy calculation
+
+    Returns:
+        Accuracy as float between 0 and 1
+    """
+    predictions = logits.argmax(dim=-1)  # [B, C, T]
+
+    # Create mask for non-padding positions
+    mask = targets != padding_idx
+
+    # Calculate accuracy only on non-padded positions
+    correct = (predictions == targets) & mask
+    total = mask.sum()
+
+    if total == 0:
+        return 0.0
+
+    return (correct.sum().float() / total.float()).item()
+
+
 def train_epoch(
     model: nn.Module,
     dataloader: DataLoader,
@@ -104,6 +140,7 @@ def train_epoch(
     epoch: int,
     metrics_tracker: MetricsTracker,
     global_step: int,
+    scheduled_sampling_strategy: Optional[ScheduledSamplingStrategy],
 ) -> Tuple[float, float, int]:
     """Train for one epoch (works for both single GPU and DDP)."""
     model.train()
@@ -132,6 +169,10 @@ def train_epoch(
         tgt = tgt.to(device, non_blocking=True)
 
         with autocast("cuda" if device.type == "cuda" else "cpu"):
+            if scheduled_sampling_strategy is not None:
+                src, ss_stats = scheduled_sampling_strategy.apply(
+                    model, src, tgt, epoch
+                )
             logits = model(src, tgt[:, :, :-1])
             B, C, T, V = logits.shape
             logits_flat = logits.reshape(B * C * T, V)
@@ -185,14 +226,15 @@ def train_epoch(
                     )
 
         if rank == 0 and isinstance(pbar, tqdm):
-            pbar.set_postfix(
-                {
-                    "grad": None if grad_norm is None else grad_norm.item(),
-                    "loss": f"{total_loss / num_batches:.4f}",
-                    "acc": f"{total_accuracy / num_batches:.4f}",
-                    "step": global_step,
-                }
-            )
+            stats = {
+                "grad": None if grad_norm is None else grad_norm.item(),
+                "loss": f"{total_loss / num_batches:.4f}",
+                "acc": f"{total_accuracy / num_batches:.4f}",
+                "step": global_step,
+            }
+            if scheduled_sampling_strategy is not None:
+                stats.update(ss_stats)
+            pbar.set_postfix(stats)
 
     if (batch_idx + 1) % gradient_accumulation_steps != 0:
         scaler.unscale_(optimizer)
@@ -304,6 +346,7 @@ def train(config_path: str):
     output_dir = Path(config["training"]["output_dir"])
     checkpoint_dir = output_dir / "checkpoints"
     metrics_tracker = MetricsTracker(output_dir / "logs")
+    scheduled_sampling_strategy = create_scheduled_sampling_strategy(config)
 
     # Load datasets
     train_dataset, val_dataset = load_datasets(config)
@@ -422,6 +465,7 @@ def train(config_path: str):
                 epoch,
                 metrics_tracker,
                 global_step,
+                scheduled_sampling_strategy,
             )
 
             print_rank0(
