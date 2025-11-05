@@ -22,7 +22,7 @@ model:
   scale_embeddings: true
 
 training:
-  num_epochs: 200
+  num_epochs: 1000
   batch_size: 4
   gradient_accumulation_steps: 8
   
@@ -49,9 +49,9 @@ training:
     weight_decay: 0.01
   
   output_dir: "experiments/models/241025_medium/"
-  log_interval: 10
-  save_interval: 20
+  log_interval: 50
+  save_interval: 100
   num_workers: 2
   
-  resume_from_checkpoint: "experiments/models/241025_medium/checkpoints/checkpoint_interrupt.pt"
+  resume_from_checkpoint: "experiments/models/241025_medium/checkpoints/interrupt.pt"
 
