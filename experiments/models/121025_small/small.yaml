@@ -9,6 +9,7 @@
 data:
   train_path: "experiments/data/111025/train.pt"
   val_path: "experiments/data/111025/val.pt"
+  test_path: "experiments/data/111025/test.pt"
 
 # 4.8M Param model
 model:

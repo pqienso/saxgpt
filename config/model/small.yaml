@@ -1,6 +1,7 @@
 data:
   train_path: "data/main/datasets/train.pt"
   val_path: "data/main/datasets/val.pt"
+  test_path: "data/main/datasets/test.pt"
 
 # 15M Param model
 model:

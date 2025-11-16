@@ -4,6 +4,7 @@
 data:
   train_path: "experiments/data/241025/train.pt"
   val_path: "experiments/data/241025/val.pt"
+  test_path: "experiments/data/241025/test.pt"
 
 model:
   vocab_size: 2049
