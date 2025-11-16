@@ -19,6 +19,8 @@ import numpy as np
 from datetime import datetime
 from frechet_audio_distance import FrechetAudioDistance
 import torchaudio
+from scipy.special import softmax
+from pprint import pprint
 
 from ..model.transformer import EncoderDecoderTransformer
 from ..training.util.checkpointing import load_checkpoint_for_inference
@@ -240,13 +242,14 @@ class ModelEvaluator:
 
     @torch.no_grad()
     def analyze_token_distribution(self) -> Dict[str, any]:
-        """Analyze predicted token distributions."""
+        """Analyze predicted token distributions and compute KL divergence."""
         print("\n" + "=" * 80)
         print("Analyzing Token Distribution")
         print("=" * 80)
 
         all_predictions = []
         all_targets = []
+        all_logits = []
 
         for src, tgt in tqdm(self.test_loader, desc="Collecting tokens"):
             src = src.to(self.device)
@@ -255,32 +258,88 @@ class ModelEvaluator:
             logits = self.model(src, tgt[:, :, :-1])
             predictions = logits.argmax(dim=-1)
 
-            # Filter out padding
             mask = tgt[:, :, 1:] != self.padding_idx
-            pred_tokens = predictions[mask].cpu().numpy()
-            tgt_tokens = tgt[:, :, 1:][mask].cpu().numpy()
+
+            B, C, T, V = logits.shape
+            logits_flat = logits.reshape(B * C * T, V)
+            pred_flat = predictions.reshape(B * C * T)
+            tgt_flat = tgt[:, :, 1:].reshape(B * C * T)
+            mask_flat = mask.reshape(B * C * T)
+            
+            # Keep only non-padded positions
+            pred_tokens = pred_flat[mask_flat].cpu().numpy()
+            tgt_tokens = tgt_flat[mask_flat].cpu().numpy()
+            logits_nonpad = logits_flat[mask_flat].cpu().numpy()
 
             all_predictions.extend(pred_tokens)
             all_targets.extend(tgt_tokens)
+            all_logits.append(logits_nonpad)
 
         all_predictions = np.array(all_predictions)
         all_targets = np.array(all_targets)
+        all_logits = np.concatenate(all_logits, axis=0)
 
         # Compute statistics
         pred_unique, pred_counts = np.unique(all_predictions, return_counts=True)
         tgt_unique, tgt_counts = np.unique(all_targets, return_counts=True)
 
+        # Compute token distribution entropies
+        pred_dist = pred_counts / pred_counts.sum()
+        tgt_dist = tgt_counts / tgt_counts.sum()
+        
+        predicted_entropy = -np.sum(pred_dist * np.log(pred_dist + 1e-10))
+        target_entropy = -np.sum(tgt_dist * np.log(tgt_dist + 1e-10))
+
+        # Compute KL divergence: KL(target || predicted)
+        all_tokens = np.union1d(pred_unique, tgt_unique)
+        
+        # Create aligned distributions
+        pred_aligned = np.zeros(len(all_tokens))
+        tgt_aligned = np.zeros(len(all_tokens))
+        
+        for i, token in enumerate(all_tokens):
+            pred_idx = np.where(pred_unique == token)[0]
+            if len(pred_idx) > 0:
+                pred_aligned[i] = pred_counts[pred_idx[0]]
+            
+            tgt_idx = np.where(tgt_unique == token)[0]
+            if len(tgt_idx) > 0:
+                tgt_aligned[i] = tgt_counts[tgt_idx[0]]
+        
+        # Normalize
+        pred_aligned = pred_aligned / pred_aligned.sum()
+        tgt_aligned = tgt_aligned / tgt_aligned.sum()
+        
+        # Add smoothing to avoid log(0)
+        epsilon = 1e-10
+        pred_aligned = pred_aligned + epsilon
+        tgt_aligned = tgt_aligned + epsilon
+        pred_aligned = pred_aligned / pred_aligned.sum()
+        tgt_aligned = tgt_aligned / tgt_aligned.sum()
+        
+        # KL(P || Q) = sum(P * log(P/Q))
+        kl_div_token_dist = np.sum(tgt_aligned * np.log(tgt_aligned / pred_aligned))
+        
+        # Compute average per-sample KL divergence from logits
+        # This measures how well the model's probability distribution matches targets
+        probs = softmax(all_logits, axis=-1)  # [N, vocab_size]
+        
+        # Create one-hot targets
+        target_one_hot = np.zeros_like(probs)
+        target_one_hot[np.arange(len(all_targets)), all_targets] = 1
+        
+        # KL divergence per sample: sum(target * log(target/pred))
+        # For one-hot targets, this simplifies to -log(pred[target])
+        kl_per_sample = -np.log(probs[np.arange(len(all_targets)), all_targets] + epsilon)
+        avg_kl_divergence = np.mean(kl_per_sample)
+
         results = {
             "num_unique_predicted": len(pred_unique),
             "num_unique_target": len(tgt_unique),
-            "predicted_entropy": -np.sum(
-                (pred_counts / pred_counts.sum())
-                * np.log(pred_counts / pred_counts.sum() + 1e-10)
-            ),
-            "target_entropy": -np.sum(
-                (tgt_counts / tgt_counts.sum())
-                * np.log(tgt_counts / tgt_counts.sum() + 1e-10)
-            ),
+            "predicted_entropy": float(predicted_entropy),
+            "target_entropy": float(target_entropy),
+            "kl_divergence_token_dist": float(kl_div_token_dist),
+            "kl_divergence_avg": float(avg_kl_divergence),
         }
 
         print(
@@ -291,6 +350,8 @@ class ModelEvaluator:
         )
         print(f"Predicted entropy: {results['predicted_entropy']:.4f}")
         print(f"Target entropy: {results['target_entropy']:.4f}")
+        print(f"KL divergence (token distributions): {results['kl_divergence_token_dist']:.4f}")
+        print(f"KL divergence (average per sample): {results['kl_divergence_avg']:.4f}")
 
         return results
 
@@ -657,7 +718,7 @@ def main():
     # Load model
     print(f"\nLoading model from {args.checkpoint}")
     model = create_model(config)
-    checkpoint = load_checkpoint_for_inference(model, Path(args.checkpoint), device)
+    _ = load_checkpoint_for_inference(model, Path(args.checkpoint), device)
 
     # Load test data
     test_data_path = config["data"].get("test_path")
@@ -687,7 +748,8 @@ def main():
     )
 
     print("\nEvaluation complete!")
-
-
+    print("Evaluation results:")
+    pprint(results)
+    
 if __name__ == "__main__":
     main()
