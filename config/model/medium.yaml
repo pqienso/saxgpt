@@ -1,9 +1,8 @@
 data:
-  train_path: "data/main/datasets/train.pt"
-  val_path: "data/main/datasets/val.pt"
-  test_path: "data/main/datasets/test.pt"
+  train_path: "data/main/7_datasets/train.pt"
+  val_path: "data/main/7_datasets/val.pt"
+  test_path: "data/main/7_datasets/test.pt"
 
-# 31M param model
 model:
   vocab_size: 2049
   num_codebooks: 4
@@ -20,17 +19,17 @@ model:
   scale_embeddings: true
 
 training:
-  num_epochs: 200
+  num_epochs: 1000
   batch_size: 4
   gradient_accumulation_steps: 8
-
-  scheduled_sampling:
-    start_epoch: 50
-    end_epoch: 175
-    start_prob: 0.0
-    end_prob: 0.35
-    sampling_strategy: "inverse_sigmoid" # linear, exponential
-  # scheduled_sampling: null
+  
+  # scheduled_sampling:
+  #   start_epoch: 50
+  #   end_epoch: 175
+  #   start_prob: 0.0
+  #   end_prob: 0.35
+  #   sampling_strategy: "inverse_sigmoid" # linear, exponential
+  scheduled_sampling: null
   
   scheduler:
     type: "cosine"
@@ -46,11 +45,9 @@ training:
     eps: 1.0e-9
     weight_decay: 0.01
   
-  # Logging and checkpointing
-  output_dir: "models/medium"
-  log_interval: 2           # Log metrics every N steps
-  save_interval: 50      # Save checkpoint every N epochs
-  num_workers: 8             # DataLoader workers
+  output_dir: "models/medium/"
+  log_interval: 50
+  save_interval: 100
+  num_workers: 2
   
-  # Resume training (optional)
-  resume_from_checkpoint: "models/medium/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "models/medium/checkpoints/interrupt.pt"

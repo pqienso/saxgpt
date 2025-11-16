@@ -45,4 +45,4 @@ training:
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "models/large/checkpoints/checkpoint_interrupt.pt"
+  resume_from_checkpoint: "models/large/checkpoints/interrupt.pt"
