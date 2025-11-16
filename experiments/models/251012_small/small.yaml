@@ -7,9 +7,9 @@
 # to showcase.
 
 data:
-  train_path: "experiments/data/111025/train.pt"
-  val_path: "experiments/data/111025/val.pt"
-  test_path: "experiments/data/111025/test.pt"
+  train_path: "experiments/data/251011/train.pt"
+  val_path: "experiments/data/251011/val.pt"
+  test_path: "experiments/data/251011/test.pt"
 
 # 4.8M Param model
 model:
@@ -62,10 +62,10 @@ training:
     weight_decay: 1.0e-2
   
   # Logging and checkpointing
-  output_dir: "experiments/models/121025_small"
+  output_dir: "experiments/models/251012_small"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "experiments/models/121025_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/models/251012_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

@@ -27,6 +27,9 @@ from ..data.util.tokenization import detokenize
 from ..data.util.codes_interleaving import remove_delay_interleaving
 
 
+TARGET_SR = 16000
+SOURCE_SR = 32000
+
 class ModelEvaluator:
     """Comprehensive model evaluation."""
 
@@ -316,8 +319,11 @@ class ModelEvaluator:
 
         # Get samples
         src_batch, tgt_batch = next(iter(self.test_loader))
-        src_batch = src_batch[:num_samples].to(self.device)
-        tgt_batch = tgt_batch[:num_samples].to(self.device)
+        
+        # Only take as many samples as are available in the batch
+        actual_samples = min(num_samples, src_batch.size(0))
+        src_batch = src_batch[:actual_samples].to(self.device)
+        tgt_batch = tgt_batch[:actual_samples].to(self.device)
 
         # Generate
         start_tokens = tgt_batch[:, :, 0]
@@ -330,9 +336,9 @@ class ModelEvaluator:
             top_p=0.9,
         )
 
-        # Save audio for each sample
-        for i in range(num_samples):
-            print(f"\nSample {i + 1}/{num_samples}")
+        # Save audio for each sample - use actual number generated
+        for i in range(generated.size(0)):  # ← Changed from range(num_samples)
+            print(f"\nSample {i + 1}/{generated.size(0)}")
 
             # Generated audio
             gen_codes = remove_delay_interleaving(generated[i].cpu())
@@ -419,15 +425,20 @@ class ModelEvaluator:
 
         print(f"Temporary directories: {temp_dir}")
 
+        resampler = torchaudio.transforms.Resample(
+            orig_freq=SOURCE_SR, 
+            new_freq=TARGET_SR
+        ).to(self.device)
+
         # Generate samples in batches
         samples_generated = 0
-        batch_size = min(8, num_samples)
 
         for batch_idx, (src_batch, tgt_batch) in enumerate(self.test_loader):
             if samples_generated >= num_samples:
                 break
 
-            batch_samples = min(batch_size, num_samples - samples_generated)
+            # Only take as many samples as we need from this batch
+            batch_samples = min(src_batch.size(0), num_samples - samples_generated)
             src_batch = src_batch[:batch_samples].to(self.device)
             tgt_batch = tgt_batch[:batch_samples].to(self.device)
 
@@ -442,32 +453,36 @@ class ModelEvaluator:
                 top_p=0.9,
             )
 
-            # Save audio files
-            for i in range(batch_samples):
+            # Save audio files - iterate over actual batch size
+            for i in range(generated.size(0)):
                 idx = samples_generated + i
 
                 # Generated audio
                 gen_codes = remove_delay_interleaving(generated[i].cpu())
                 try:
-                    gen_audio = detokenize(gen_codes)
+                    gen_audio = detokenize(gen_codes).to(self.device)
+                    # Resample to 16kHz for VGGish
+                    gen_audio_resampled = resampler(gen_audio).cpu()
                     gen_path = fad_gen_dir / f"{idx:04d}.wav"
-                    torchaudio.save(str(gen_path), gen_audio, 32000)
+                    torchaudio.save(str(gen_path), gen_audio_resampled, TARGET_SR)
                 except Exception as e:
-                    print(f"Warning: Failed to save generated sample {idx}: {e}")
+                    print(f"\nWarning: Failed to save generated sample {idx}: {e}")
                     continue
 
                 # Reference audio
                 tgt_trimmed = tgt_batch[i, :, : generated.size(2)].cpu()
                 tgt_codes = remove_delay_interleaving(tgt_trimmed)
                 try:
-                    tgt_audio = detokenize(tgt_codes)
+                    tgt_audio = detokenize(tgt_codes).to(self.device)
+                    # Resample to 16kHz for VGGish
+                    tgt_audio_resampled = resampler(tgt_audio).cpu()
                     ref_path = fad_ref_dir / f"{idx:04d}.wav"
-                    torchaudio.save(str(ref_path), tgt_audio, 32000)
+                    torchaudio.save(str(ref_path), tgt_audio_resampled, TARGET_SR)
                 except Exception as e:
-                    print(f"Warning: Failed to save reference sample {idx}: {e}")
+                    print(f"\nWarning: Failed to save reference sample {idx}: {e}")
                     continue
 
-            samples_generated += batch_samples
+            samples_generated += generated.size(0)
             print(f"Generated {samples_generated}/{num_samples} samples", end="\r")
 
         print(f"\nGenerated {samples_generated} samples total")
@@ -477,7 +492,7 @@ class ModelEvaluator:
             print("\nCalculating FAD using frechet-audio-distance library...")
             frechet = FrechetAudioDistance(
                 model_name=model_name,
-                sample_rate=32000,
+                sample_rate=TARGET_SR,
                 use_pca=False,
                 use_activation=False,
                 verbose=True,
@@ -492,7 +507,6 @@ class ModelEvaluator:
 
             # Cleanup
             import shutil
-
             shutil.rmtree(temp_dir)
 
             return {

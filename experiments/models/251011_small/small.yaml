@@ -1,21 +1,20 @@
-# Attempt to overfit on a full dataset.
-# This dataset does not have augmentation or audio normalization.
-# The model managed to overfit (0.96 CE training loss, 16.1 validation loss)
-# But the audio produced was not viable at all.
+# Initial config after overfit on experimental dataset worked.
+# Experienced significant overfitting: 3.0 CE training loss, 9.0 CE val loss.
+# Likely not enough data + overfitting.
 
 data:
-  train_path: "experiments/data/111025/train.pt"
-  val_path: "experiments/data/111025/val.pt"
-  test_path: "experiments/data/111025/test.pt"
+  train_path: "experiments/data/251011/train.pt"
+  val_path: "experiments/data/251011/val.pt"
+  test_path: "experiments/data/251011/test.pt"
 
 model:
   vocab_size: 2049
   num_codebooks: 4
-  d_model: 256
-  nhead: 16
-  num_encoder_layers: 16
-  num_decoder_layers: 16
-  dim_feedforward: 1024
+  d_model: 128
+  nhead: 8
+  num_encoder_layers: 6
+  num_decoder_layers: 6
+  dim_feedforward: 512
   dropout: 0.1
   activation: "relu"         
   norm_first: false          
@@ -25,15 +24,16 @@ model:
 
 
 training:
-  num_epochs: 1000
+  num_epochs: 500
   # Effective batch size = batch_size * gradient_accumulation_steps
-  batch_size: 2
-  gradient_accumulation_steps: 16
+  batch_size: 8
+  gradient_accumulation_steps: 8
+  max_grad_norm: 5.0
   
   # Learning rate scheduler
   scheduler:
     type: "cosine"           # Options: cosine, linear, step, plateau
-    warmup_steps: 1000       # Warmup for N steps
+    warmup_steps: 300       # Warmup for N steps
     total_steps:  null       # Total training steps (auto-calculated if omitted)
     min_lr: 1.0e-6           # Minimum learning rate
     
@@ -48,17 +48,17 @@ training:
   # Optimizer
   optimizer:
     type: "adamw"
-    lr: 0.0001 
-    embedding_lr: null
+    lr: 0.001
+    embedding_lr: 0.005
     betas: [0.9, 0.98]
     eps: 1.0e-9
-    weight_decay: 0.001
+    weight_decay: 1.0e-4
   
   # Logging and checkpointing
-  output_dir: "experiments/models/141025_medium"
+  output_dir: "experiments/models/251011_small/"
   log_interval: 2           # Log metrics every N steps
   save_interval: 50      # Save checkpoint every N epochs
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "experiments/models/141025_medium/checkpoints/checkpoint_interrupt.pt"
+  resume_from_checkpoint: "experiments/models/251011_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh

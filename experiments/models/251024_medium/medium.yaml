@@ -49,10 +49,10 @@ training:
     eps: 1.0e-9
     weight_decay: 0.01
   
-  output_dir: "experiments/models/241025_medium/"
+  output_dir: "experiments/models/251024_medium/"
   log_interval: 50
   save_interval: 100
   num_workers: 2
   
-  resume_from_checkpoint: "experiments/models/241025_medium/checkpoints/interrupt.pt"
+  resume_from_checkpoint: "experiments/models/251024_medium/checkpoints/interrupt.pt"
 
