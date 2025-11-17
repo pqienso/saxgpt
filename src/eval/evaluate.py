@@ -320,8 +320,6 @@ class ModelEvaluator:
         # KL(P || Q) = sum(P * log(P/Q))
         kl_div_token_dist = np.sum(tgt_aligned * np.log(tgt_aligned / pred_aligned))
         
-        # Compute average per-sample KL divergence from logits
-        # This measures how well the model's probability distribution matches targets
         probs = softmax(all_logits, axis=-1)  # [N, vocab_size]
         
         # Create one-hot targets
@@ -679,7 +677,7 @@ def main():
         "--config", type=str, required=True, help="Path to model config"
     )
     parser.add_argument(
-        "--checkpoint", type=str, required=True, help="Path to checkpoint"
+        "--checkpoint", type=str, default = None, help="Path to checkpoint"
     )
     parser.add_argument(
         "--output-dir",
@@ -715,10 +713,14 @@ def main():
     device = torch.device("cuda" if args.cuda and torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    if args.checkpoint is None:
+        checkpoint_path = Path(config["training"]["output_dir"]) / "model" / "latest.pt"
+    else:
+        checkpoint_path = Path(args.checkpoint)
     # Load model
-    print(f"\nLoading model from {args.checkpoint}")
+    print(f"\nLoading model from {checkpoint_path}")
     model = create_model(config)
-    _ = load_checkpoint_for_inference(model, Path(args.checkpoint), device)
+    _ = load_checkpoint_for_inference(model, Path(checkpoint_path), device)
 
     # Load test data
     test_data_path = config["data"].get("test_path")
@@ -750,6 +752,6 @@ def main():
     print("\nEvaluation complete!")
     print("Evaluation results:")
     pprint(results)
-    
+
 if __name__ == "__main__":
     main()

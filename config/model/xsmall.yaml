@@ -66,4 +66,4 @@ training:
   num_workers: 8             # DataLoader workers
   
   # Resume training (optional)
-  resume_from_checkpoint: "experiments/models/241025_small/checkpoints/checkpoint_interrupt.pt" # Path to checkpoint, or null to start fresh
+  resume_from_checkpoint: "experiments/models/241025_small/checkpoints/interrupt.pt" # Path to checkpoint, or null to start fresh

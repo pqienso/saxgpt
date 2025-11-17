@@ -1,7 +1,7 @@
-
-train_path: "data/main/7_datasets/train.pt"
-val_path: "data/main/7_datasets/val.pt"
-test_path: "data/main/7_datasets/test.pt"
+data:
+  train_path: "data/main/7_datasets/train.pt"
+  val_path: "data/main/7_datasets/val.pt"
+  test_path: "data/main/7_datasets/test.pt"
 
 # 15M Param model
 model:
@@ -22,8 +22,8 @@ model:
 
 training:
   num_epochs: 1000
-  batch_size: 8
-  gradient_accumulation_steps: 4
+  batch_size: 6
+  gradient_accumulation_steps: 6
   
   # scheduled_sampling:
   #   start_epoch: 50
