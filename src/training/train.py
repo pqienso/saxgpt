@@ -141,6 +141,7 @@ def train_epoch(
     metrics_tracker: MetricsTracker,
     global_step: int,
     scheduled_sampling_strategy: Optional[ScheduledSamplingStrategy],
+    use_pbar: bool = True,
 ) -> Tuple[float, float, int]:
     """Train for one epoch (works for both single GPU and DDP)."""
     model.train()
@@ -161,7 +162,7 @@ def train_epoch(
     optimizer.zero_grad()
 
     # Only show progress bar on rank 0
-    pbar = tqdm(dataloader) if rank == 0 else dataloader
+    pbar = tqdm(dataloader) if rank == 0 and use_pbar else dataloader
 
     for batch_idx, batch in enumerate(pbar):
         src, tgt = batch
@@ -275,7 +276,11 @@ def validate(
 
     padding_idx = config["model"]["padding_idx"]
 
-    pbar = tqdm(dataloader, desc="Validation") if rank == 0 else dataloader
+    pbar = (
+        tqdm(dataloader, desc="Validation")
+        if rank == 0 and config["training"].get("use_pbar", True)
+        else dataloader
+    )
 
     for batch in pbar:
         src, tgt = batch
@@ -466,6 +471,7 @@ def train(config_path: str):
                 metrics_tracker,
                 global_step,
                 scheduled_sampling_strategy,
+                config["training"].get("use_pbar", True),
             )
 
             print_rank0(

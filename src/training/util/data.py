@@ -1,26 +1,26 @@
-import torch
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
-from pathlib import Path
 from typing import Dict, Tuple, Optional
 
 from .distributed import is_distributed, get_world_size, get_rank, print_rank0
+from .gcs_data import load_dataset_from_path
 
 
 def load_dataset(data_path: str, dataset_name: str = "dataset") -> TensorDataset:
     """
-    Load dataset from .pt file.
+    Load dataset from local or GCS path.
 
     Args:
-        data_path: Path to .pt file
+        data_path: Path to .pt file (local or gs://...)
         dataset_name: Name for logging purposes
 
     Returns:
         TensorDataset
     """
-    data_path = Path(data_path)
     print_rank0(f"Loading {dataset_name} from: {data_path}")
-    data = torch.load(data_path, weights_only=False)
+    
+    # Use GCS-aware loading
+    data = load_dataset_from_path(data_path)
 
     # Handle both tuple and TensorDataset formats
     if isinstance(data, tuple):
@@ -35,6 +35,7 @@ def load_dataset(data_path: str, dataset_name: str = "dataset") -> TensorDataset
 def load_datasets(config: Dict) -> Tuple[TensorDataset, TensorDataset]:
     """
     Load training and validation datasets from configuration.
+    Supports both local and GCS paths.
 
     Args:
         config: Configuration dictionary with data paths

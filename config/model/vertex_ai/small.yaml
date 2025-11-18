@@ -1,0 +1,56 @@
+data:
+  train_path: "data/main/7_datasets/train.pt"
+  val_path: "data/main/7_datasets/val.pt"
+  test_path: "data/main/7_datasets/test.pt"
+
+# 15M Param model
+model:
+  vocab_size: 2049
+  num_codebooks: 4
+  d_model: 256
+  nhead: 4
+  num_encoder_layers: 6
+  num_decoder_layers: 6
+  dim_feedforward: 1024
+  dropout: 0.3
+  activation: "relu"
+  norm_first: true
+  max_seq_len: 1505
+  padding_idx: 2048
+  scale_embeddings: false
+
+
+training:
+  use_pbar: false
+  num_epochs: 1000
+  batch_size: 64
+  gradient_accumulation_steps: 1
+  
+  # scheduled_sampling:
+  #   start_epoch: 50
+  #   end_epoch: 175
+  #   start_prob: 0.0
+  #   end_prob: 0.35
+  #   sampling_strategy: "inverse_sigmoid" # linear, exponential
+  scheduled_sampling: null
+  
+  scheduler:
+    type: "cosine"
+    warmup_steps: 1000
+    total_steps: null
+    min_lr: 1.0e-6
+   
+  optimizer:
+    type: "adamw"
+    lr: 0.002
+    embedding_lr: null
+    betas: [0.9, 0.98]
+    eps: 1.0e-9
+    weight_decay: 0.01
+  
+  output_dir: "models/small/"
+  log_interval: 50
+  save_interval: 100
+  num_workers: 2
+  
+  resume_from_checkpoint: "models/small/checkpoints/interrupt.pt"

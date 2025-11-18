@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cu129
+pandas
+transformers
+torch
+torchaudio
+torchvision
+tqdm
+soundfile
+matplotlib
+pyloudnorm
