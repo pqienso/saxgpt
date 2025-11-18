@@ -1,4 +1,4 @@
-source vertex_config.env
+source ./vertex_config.env
 
 docker build -t $IMAGE_URI -f Dockerfile .
 

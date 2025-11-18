@@ -96,6 +96,12 @@ def submit_training_job(
         machine_spec["accelerator_type"] = accelerator_type
         machine_spec["accelerator_count"] = accelerator_count
 
+    args = [
+        "--config",
+        "/gcs" + gcs_config_path[4:],  # Remove 'gs:/' prefix
+    ]
+    if accelerator_count > 1:
+        args.append("--ddp")
     # Worker pool specification
     if replica_count > 1:
         # Distributed training
@@ -105,10 +111,7 @@ def submit_training_job(
                 "replica_count": replica_count,
                 "container_spec": {
                     "image_uri": image_uri,
-                    "args": [
-                        "--config",
-                        "/gcs" + gcs_config_path[4:],  # Remove 'gs:/' prefix
-                    ],
+                    "args": args,
                 },
             }
         ]
@@ -131,10 +134,7 @@ def submit_training_job(
                 "replica_count": 1,
                 "container_spec": {
                     "image_uri": image_uri,
-                    "args": [
-                        "--config",
-                        "/gcs" + gcs_config_path[4:],
-                    ],
+                    "args": args,
                 },
             }
         ]
@@ -159,7 +159,6 @@ def submit_training_job(
         base_output_dir=config["training"]["output_dir"],
     )
 
-
     # Submit job
     print("\nSubmitting job...")
     job.run(
@@ -170,14 +169,24 @@ def submit_training_job(
 
     print("Job submitted successfully.")
     print(f"  Job name: {display_name}")
+    print("Getting job id...")
 
-    while True:
-        try:
-            print(f"  Job resource name: {job.resource_name}")
-            job_id = job.resource_name.split("/")[-1]
-            break
-        except RuntimeError:
-            sleep(5.0)
+    try:
+        while True:
+            try:
+                print(f"  Job resource name: {job.resource_name}")
+                job_id = job.resource_name.split("/")[-1]
+                print(f"  Job id: {job_id}")
+                break
+            except RuntimeError:
+                sleep(5.0)
+    except KeyboardInterrupt:
+        # Show quota errors with synchronous call
+        job.run(
+            sync=True,
+            restart_job_on_worker_restart=True,
+            scheduling_strategy=Scheduling.Strategy.SPOT if use_spot else None,
+        )
 
     print("\nMonitor your job:")
     print(
@@ -187,7 +196,6 @@ def submit_training_job(
     print(f"  gcloud ai custom-jobs stream-logs {job_id} --region={region}")
     print("\n Download checkpoints (after training):")
     print(f"  gsutil -m cp -r {config['training']['output_dir']}/checkpoints ./")
-
 
     return job
 
