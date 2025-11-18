@@ -1,3 +1,5 @@
+vertex_config.env
+
 # Data files
 *.wav
 /data/
