@@ -27,10 +27,17 @@ The model consists of:
 - **4 parallel token streams** per audio (from Encodec), each with vocab size 2048
 - **Delay pattern interleaving**: Each codebook starts at a different position for better convergence
 
-```
-Input (Backing Track) → Encoder → Memory
-                                    ↓
-Start Tokens → Decoder (with KV cache) → 4 Logit Heads → Saxophone Tokens → Audio
+```mermaid
+graph TD;
+s[Start] --> |Backing codes| emb;
+emb[Embed] --> |Backing embeddings| enc;
+
+s[Start] --> |Lead codes| emb;
+emb[Embed] --> |Lead embeddings| dec;
+
+enc[Encoder] --> |Memory| dec;
+dec[Decoder with KV-cache] --> |Decoder output| log;
+log[[4 logit heads]] --> |Per-codebook logits| smp[Sampling]
 ```
 
 ## Installation
@@ -132,6 +139,21 @@ This pipeline:
 5. **Augments** audio with pitch/tempo variations (optional)
 6. **Tokenizes** audio using Encodec
 7. **Splits** into train/val/test sets
+
+#### Data pipeline flowchart
+```mermaid
+graph TD;
+    1[yt-dlp ingestion] --> |Audio files| 2;
+    2[Volume normalization] --> |Normalized audio| 3;
+    3[Stem split] --> |Lead track| 4;
+    3 --> |Backing & lead tracks| 10;
+    10[Volume normalization] --> |Backing & lead tracks| 5;
+    4[Sliding window RMS energy] --> |Valid time windows| 5;
+    5[Clip audio files] --> |Backing & lead clips| 6;
+    6[Pitch & tempo augmentation] --> |Augmented audio clips| 7;
+    7[Tokenization] --> |Audio codes| 8;
+    8[Train-val-test split] --> |Datasets| 9[End];
+```
 
 **Note**: The `--cuda` flag enables GPU acceleration for stem separation and tokenization.
 
