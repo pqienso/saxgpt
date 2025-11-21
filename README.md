@@ -66,9 +66,9 @@ This creates 3 separate environments:
 - `.venv/encodec` - For audio tokenization with Encodec
 - `.venv/eval` - For evaluation (due to many dependencies needed for the FAD library)
 
-## Dataset Creation
+## Quick Start
 
-### 1. Configure Your Data
+### 1. Dataset Creation
 
 Create or modify a config file in `config/data/`:
 
@@ -84,7 +84,7 @@ data_paths:
   codes_dir: 'data/your_dataset/6_codes/'
   datasets_dir: 'data/your_dataset/7_datasets/'
 
-intermediates: # keep / discard intermediate outputs
+intermediates:
   keep_dl: true
   keep_stems: true
   keep_clips: true
@@ -125,20 +125,19 @@ dataset:
   padding_idx: 2048
 ```
 
-### 2. Build the Dataset
-
+Build the dataset:
 ```bash
 bash scripts/run_data_pipeline.sh --config config/data/your_config.yaml [--cuda]
 ```
 
-This pipeline:
-1. **Downloads** audio from YouTube
-2. **Separates** stems using Demucs (sax vs rhythm section)
-3. **Creates** metadata with valid audio windows (RMS-based filtering)
-4. **Clips** audio to extract relevant sections
-5. **Augments** audio with pitch/tempo variations (optional)
-6. **Tokenizes** audio using Encodec
-7. **Splits** into train/val/test sets
+The pipeline automatically:
+1. Downloads audio from YouTube
+2. Separates stems using Demucs (sax vs rhythm section)
+3. Creates metadata with valid audio windows (RMS-based filtering)
+4. Clips audio to extract relevant sections
+5. Augments audio with pitch/tempo variations
+6. Tokenizes audio using Encodec
+7. Splits into train/val/test sets
 
 #### Data pipeline flowchart
 ```mermaid
@@ -157,9 +156,7 @@ graph TD;
 
 **Note**: The `--cuda` flag enables GPU acceleration for stem separation and tokenization.
 
-## Training
-
-### 1. Configure Training
+### 2. Training
 
 Create or modify a config file in `config/model/`:
 
@@ -212,7 +209,7 @@ training:
   resume_from_checkpoint: null  # Or path to checkpoint
 ```
 
-### 2. Start Training
+Start training:
 
 **Single GPU:**
 ```bash
@@ -221,7 +218,7 @@ python -m src.training.train --config config/model/your_config.yaml
 
 **Multi-GPU with torchrun:**
 ```bash
-torchrun --nproc_per_node=4 src/training/train.py --config config/model/your_config.yaml
+torchrun --nproc_per_node=4 -m src.training.train --config config/model/your_config.yaml
 ```
 
 **Multi-GPU with spawn:**
@@ -239,7 +236,7 @@ Training features:
 
 ### 3. Monitor Training
 
-**Text monitoring:**
+**Text summary:**
 ```bash
 python -m src.training.monitor_metrics --config config/model/your_config.yaml --watch
 ```
@@ -251,32 +248,32 @@ python -m src.training.monitor_metrics --config config/model/your_config.yaml --
 
 **Static plot:**
 ```bash
-python -m src.training.monitor_metrics \
+python -m src.training.monitor_metrics --config config/model/your_config.yaml --plot --output training_progress.png
+```
+
+### 4. Generation
+
+Generate saxophone solos from backing tracks:
+
+```bash
+python -m src.eval.listen \
     --config config/model/your_config.yaml \
-    --plot \
-    --output training_progress.png
+    --checkpoint models/your_model/checkpoints/best.pt \
+    --audio path/to/backing_track.wav \
+    --cuda \
+    --temp 0.9
 ```
 
-### 4. Resume Training
+This generates:
+- `{audio}_gen.wav` - Generated saxophone solo
+- `{audio}_combined.wav` - Backing track + generated solo
 
-If training is interrupted:
-```bash
-# The checkpoint path is automatically saved in config
-python -m src.training.train --config config/model/your_config.yaml
-```
+### 5. Evaluation
 
-## Evaluation
-
-Comprehensive evaluation suite including:
-- Loss and accuracy metrics
-- Generation quality at different temperatures
-- Autoregressive consistency checks
-- Token distribution analysis (KL divergence)
-- Fréchet Audio Distance (FAD) scoring
-- Audio sample generation
+Comprehensive evaluation with metrics and audio samples:
 
 ```bash
-python -m src.eval.evaluate \
+python -m src.eval.metrics \
     --config config/model/your_config.yaml \
     --checkpoint models/your_model/checkpoints/best.pt \
     --output-dir models/your_model/evaluation \
@@ -284,15 +281,20 @@ python -m src.eval.evaluate \
     --cuda
 ```
 
+Metrics include:
+- Loss and accuracy
+- Generation quality at different temperatures
+- Autoregressive consistency checks
+- Token distribution analysis
+- Fréchet Audio Distance (FAD)
+- Generated audio samples
+
 ## Cloud Training (GCP Vertex AI)
 
 ### 1. Build and Push Docker Image
 
 ```bash
-# Set environment variables
 source ./vertex_config.env
-
-# Build and push
 bash scripts/build_docker.sh
 ```
 
@@ -309,6 +311,20 @@ python -m src.training.submit_vertex_training \
     --accelerator-type NVIDIA_TESLA_V100 \
     --accelerator-count 4 \
     --spot  # Optional: use spot instances for 80% cost savings
+```
+
+### 3. Resume Training
+
+Upload local checkpoints to resume training:
+
+```bash
+python -m src.training.submit_vertex_training \
+    --project-id YOUR_PROJECT_ID \
+    --region us-central1 \
+    --bucket YOUR_BUCKET_NAME \
+    --config config/model/vertex_ai/xlarge.yaml \
+    --image-uri YOUR_IMAGE_URI \
+    --resume-from-local models/your_model/
 ```
 
 ## Project Structure
@@ -334,7 +350,8 @@ SaxGPT/
 │   │   ├── monitor_metrics.py  # Training monitoring
 │   │   └── util/          # Training utilities (DDP, checkpointing, etc.)
 │   └── eval/
-│       └── evaluate.py    # Comprehensive evaluation suite
+│       ├── listen.py      # Solo generation interface
+│       └── metrics.py     # Comprehensive evaluation suite
 ├── requirements/
 │   ├── demucs.txt        # For stem splitting (Python 3.9)
 │   ├── encodec.txt       # For training (Python 3.10+)
@@ -344,6 +361,7 @@ SaxGPT/
 │   ├── run_data_pipeline.sh
 │   └── build_docker.sh
 ├── Dockerfile            # For Vertex AI training
+├── setup.py
 └── tests/                # Unit tests
 ```
 
@@ -379,47 +397,45 @@ Pre-configured model sizes:
 - Mixed precision (FP16) training
 - Gradient accumulation for larger batch sizes
 - Gradient clipping (default: 1.0)
-- Learning rate scheduling:
-  - Cosine with warmup (recommended)
-  - Linear with warmup
-  - Step decay
-  - ReduceLROnPlateau
+- Learning rate scheduling with warmup
 - Distributed Data Parallel (DDP) support
 - Interrupt recovery with automatic checkpoint saving
+- Optional scheduled sampling for teacher forcing to model predictions
 
-### Advanced Features
-- **Scheduled Sampling**: Gradually transition from teacher forcing to model predictions
-- **Token Distribution Analysis**: KL divergence tracking for monitoring model behavior
-- **FAD Scoring**: Perceptual audio quality metrics using VGGish embeddings
-- **GCS Integration**: Direct support for Google Cloud Storage paths
+### Generation Features
+- Autoregressive generation with full KV-caching
+- Temperature-based sampling
+- Top-k and nucleus (top-p) sampling
+- Automatic handling of delayed codebook patterns
+- Greedy decoding option for deterministic generation
 
 ## Evaluation Metrics
 
-The evaluation suite provides:
+The evaluation suite provides comprehensive assessment:
 
-1. **Basic Metrics**:
-   - Cross-entropy loss
-   - Token-level accuracy
-   - Perplexity
-   - Per-codebook metrics
+**Basic Metrics:**
+- Cross-entropy loss
+- Token-level accuracy
+- Perplexity
+- Per-codebook metrics
 
-2. **Generation Quality**:
-   - Multi-temperature sampling
-   - Top-k and nucleus (top-p) sampling
-   - Sequence-level accuracy
+**Generation Quality:**
+- Multi-temperature sampling analysis
+- Top-k and nucleus sampling evaluation
+- Sequence-level accuracy
 
-3. **Consistency Checks**:
-   - Autoregressive vs teacher-forcing consistency
-   - First divergence position detection
+**Consistency Checks:**
+- Autoregressive vs teacher-forcing consistency
+- First divergence position detection
 
-4. **Distribution Analysis**:
-   - Vocabulary coverage (unique tokens)
-   - Token distribution entropy
-   - KL divergence (target vs predicted)
+**Distribution Analysis:**
+- Vocabulary coverage (unique tokens)
+- Token distribution entropy
+- KL divergence (target vs predicted)
 
-5. **Perceptual Quality**:
-   - Fréchet Audio Distance (FAD)
-   - Audio sample generation
+**Perceptual Quality:**
+- Fréchet Audio Distance (FAD)
+- Audio sample generation
 
 ## Known Issues & Limitations
 
