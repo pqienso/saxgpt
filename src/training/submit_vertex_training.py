@@ -12,7 +12,6 @@ from google.cloud.aiplatform_v1.types.custom_job import Scheduling
 import yaml
 from pathlib import Path
 from datetime import datetime
-from time import sleep
 
 
 def upload_config_to_gcs(config_path: str, bucket_name: str, project_id: str) -> str:
@@ -30,22 +29,96 @@ def upload_config_to_gcs(config_path: str, bucket_name: str, project_id: str) ->
     return gcs_path
 
 
-def update_config_for_gcs(config_path: str, bucket_name: str) -> dict:
-    """Update config to use GCS paths."""
+def upload_directory_to_gcs(
+    local_dir: str, 
+    bucket_name: str, 
+    gcs_prefix: str, 
+    project_id: str
+) -> None:
+    """
+    Upload an entire directory to GCS, preserving structure.
+    
+    Args:
+        local_dir: Local directory path to upload
+        bucket_name: GCS bucket name
+        gcs_prefix: Prefix in GCS (e.g., "models/20251117_214059")
+        project_id: GCP project ID
+    """
+    local_path = Path(local_dir)
+    if not local_path.exists():
+        raise ValueError(f"Local directory does not exist: {local_dir}")
+    
+    if not local_path.is_dir():
+        raise ValueError(f"Path is not a directory: {local_dir}")
+    
+    storage_client = storage.Client(project=project_id)
+    bucket = storage_client.bucket(bucket_name)
+    
+    # Get all files recursively
+    files_to_upload = list(local_path.rglob("*"))
+    files_to_upload = [f for f in files_to_upload if f.is_file()]
+    
+    if not files_to_upload:
+        print(f"Warning: No files found in {local_dir}")
+        return
+    
+    print(f"\nUploading {len(files_to_upload)} files from {local_dir} to gs://{bucket_name}/{gcs_prefix}")
+    
+    uploaded = 0
+    for local_file in files_to_upload:
+        # Get relative path from local_dir
+        relative_path = local_file.relative_to(local_path)
+        # Construct GCS path
+        blob_name = f"{gcs_prefix}/{relative_path}".replace("\\", "/")  # Handle Windows paths
+        
+        blob = bucket.blob(blob_name)
+        blob.upload_from_filename(str(local_file))
+        uploaded += 1
+        
+        # Progress indicator
+        if uploaded % 10 == 0 or uploaded == len(files_to_upload):
+            print(f"  Uploaded {uploaded}/{len(files_to_upload)} files...", end="\r")
+    
+    print(f"\n✓ Successfully uploaded {uploaded} files to gs://{bucket_name}/{gcs_prefix}")
+
+
+def update_config_for_gcs(
+    config_path: str, 
+    bucket_name: str, 
+    timestamp: str,
+    resume_from_local: bool = False
+) -> dict:
+    """Update config to use /gcs/ mounted paths for Vertex AI."""
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    # Update data paths to GCS
-    config["data"]["train_path"] = f"gs://{bucket_name}/{config['data']['train_path']}"
-    config["data"]["val_path"] = f"gs://{bucket_name}/{config['data']['val_path']}"
+    # Update data paths to /gcs/ mounted paths
+    # Convert relative paths like "data/main/7_datasets/train.pt" 
+    # to "/gcs/bucket-name/data/main/7_datasets/train.pt"
+    config["data"]["train_path"] = f"/gcs/{bucket_name}/{config['data']['train_path']}"
+    config["data"]["val_path"] = f"/gcs/{bucket_name}/{config['data']['val_path']}"
     if "test_path" in config["data"]:
-        config["data"]["test_path"] = (
-            f"gs://{bucket_name}/{config['data']['test_path']}"
-        )
+        config["data"]["test_path"] = f"/gcs/{bucket_name}/{config['data']['test_path']}"
 
-    # Update output directory to GCS
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    config["training"]["output_dir"] = f"gs://{bucket_name}/models/{timestamp}"
+    # Update output directory to /gcs/ mounted path
+    config["training"]["output_dir"] = f"/gcs/{bucket_name}/models/{timestamp}"
+
+    # Fix resume_from_checkpoint path
+    if "resume_from_checkpoint" in config["training"]:
+        resume_path = config["training"]["resume_from_checkpoint"]
+        if resume_path:
+            if resume_from_local:
+                # When resuming from uploaded local directory, checkpoint will be in the output dir
+                config["training"]["resume_from_checkpoint"] = (
+                    f"{config['training']['output_dir']}/checkpoints/latest.pt"
+                )
+                print(f"Resuming from uploaded checkpoint: {config['training']['resume_from_checkpoint']}")
+            elif not resume_path.startswith("/gcs/"):
+                # Convert relative path to /gcs/ mounted path using the output directory
+                config["training"]["resume_from_checkpoint"] = (
+                    f"{config['training']['output_dir']}/checkpoints/latest.pt"
+                )
+                print(f"Updated resume_from_checkpoint to: {config['training']['resume_from_checkpoint']}")
 
     return config
 
@@ -62,8 +135,15 @@ def submit_training_job(
     replica_count: int = 1,
     display_name: str = None,
     use_spot: bool = False,
+    resume_from_local: str = None,
 ):
-    """Submit a custom training job to Vertex AI."""
+    """
+    Submit a custom training job to Vertex AI.
+    
+    Args:
+        resume_from_local: Optional path to local output directory to upload before training.
+                          Should contain checkpoints/ and logs/ subdirectories.
+    """
 
     # Initialize Vertex AI with staging bucket
     staging_bucket = f"gs://{bucket_name}"
@@ -73,8 +153,29 @@ def submit_training_job(
         staging_bucket=staging_bucket,
     )
 
-    # Update config for GCS
-    config = update_config_for_gcs(config_path, bucket_name)
+    # Generate timestamp for this run
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Upload local output directory if specified
+    if resume_from_local:
+        print("\n" + "=" * 80)
+        print("Uploading local output directory to GCS")
+        print("=" * 80)
+        upload_directory_to_gcs(
+            local_dir=resume_from_local,
+            bucket_name=bucket_name,
+            gcs_prefix=f"models/{timestamp}",
+            project_id=project_id
+        )
+        print("=" * 80 + "\n")
+
+    # Update config for /gcs/ mounted paths
+    config = update_config_for_gcs(
+        config_path, 
+        bucket_name, 
+        timestamp,
+        resume_from_local=resume_from_local is not None
+    )
 
     # Save updated config
     temp_config_path = "/tmp/vertex_config.yaml"
@@ -86,7 +187,8 @@ def submit_training_job(
 
     # Generate job display name
     if display_name is None:
-        display_name = f"saxgpt-training-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        suffix = "resume" if resume_from_local else "train"
+        display_name = f"saxgpt-{suffix}-{timestamp}"
 
     # Build machine spec based on accelerator settings
     machine_spec = {"machine_type": machine_type}
@@ -96,12 +198,16 @@ def submit_training_job(
         machine_spec["accelerator_type"] = accelerator_type
         machine_spec["accelerator_count"] = accelerator_count
 
+    # Convert gs:// to /gcs/ for the config path
+    config_path_in_container = "/gcs/" + gcs_config_path[5:]
+    
     args = [
         "--config",
-        "/gcs" + gcs_config_path[4:],  # Remove 'gs:/' prefix
+        config_path_in_container,
     ]
     if accelerator_count > 1:
         args.append("--ddp")
+        
     # Worker pool specification
     if replica_count > 1:
         # Distributed training
@@ -148,45 +254,33 @@ def submit_training_job(
             print("  Accelerator: None (CPU only)")
 
     print(f"  Image: {image_uri}")
-    print(f"  Config: {gcs_config_path}")
+    print(f"  Config (uploaded): {gcs_config_path}")
+    print(f"  Config (in container): {config_path_in_container}")
     print(f"  Output: {config['training']['output_dir']}")
+    print(f"  Output (GCS): gs://{bucket_name}/models/{timestamp}")
+    if resume_from_local:
+        print(f"  Resuming from: {resume_from_local} (uploaded)")
 
     # Create custom job
     print(f"\nCreating custom job: {display_name}")
     job = aiplatform.CustomJob(
         display_name=display_name,
         worker_pool_specs=worker_pool_specs,
-        base_output_dir=config["training"]["output_dir"],
+        base_output_dir=f"gs://{bucket_name}/models/{timestamp}",  # Use gs:// for Vertex AI API
     )
 
     # Submit job
     print("\nSubmitting job...")
-    job.run(
-        sync=False,
+    job.submit(
         restart_job_on_worker_restart=True,
         scheduling_strategy=Scheduling.Strategy.SPOT if use_spot else None,
     )
 
     print("Job submitted successfully.")
     print(f"  Job name: {display_name}")
-    print("Getting job id...")
-
-    try:
-        while True:
-            try:
-                print(f"  Job resource name: {job.resource_name}")
-                job_id = job.resource_name.split("/")[-1]
-                print(f"  Job id: {job_id}")
-                break
-            except RuntimeError:
-                sleep(5.0)
-    except KeyboardInterrupt:
-        # Show quota errors with synchronous call
-        job.run(
-            sync=True,
-            restart_job_on_worker_restart=True,
-            scheduling_strategy=Scheduling.Strategy.SPOT if use_spot else None,
-        )
+    print(f"  Job resource name: {job.resource_name}")
+    job_id = job.resource_name.split("/")[-1]
+    print(f"  Job id: {job_id}")
 
     print("\nMonitor your job:")
     print(
@@ -194,8 +288,10 @@ def submit_training_job(
     )
     print("\nStream logs (once job starts):")
     print(f"  gcloud ai custom-jobs stream-logs {job_id} --region={region}")
-    print("\n Download checkpoints (after training):")
-    print(f"  gsutil -m cp -r {config['training']['output_dir']}/checkpoints ./")
+    print("\nDownload checkpoints (after training):")
+    print(f"  gsutil -m cp -r gs://{bucket_name}/models/{timestamp}/checkpoints ./")
+    print("\nDownload logs:")
+    print(f"  gsutil -m cp -r gs://{bucket_name}/models/{timestamp}/logs ./")
 
     return job
 
@@ -226,20 +322,23 @@ def main():
     parser.add_argument(
         "--accelerator-count", type=int, default=4, help="Number of GPUs per machine"
     )
-
-    # Distributed training
     parser.add_argument(
         "--replica-count",
         type=int,
         default=1,
         help="Number of replicas for distributed training",
     )
-
-    # Cost optimization
     parser.add_argument(
         "--spot",
         action="store_true",
-        help="Use Spot/Preemptible VMs (up to 80%% cheaper, can be interrupted)",
+        help="Use Spot/Preemptible VMs",
+    )
+
+    parser.add_argument(
+        "--resume-from-local",
+        type=str,
+        default=None,
+        help="Path to local output directory to upload (should contain checkpoints/ and logs/)",
     )
 
     # Optional
@@ -259,6 +358,7 @@ def main():
         replica_count=args.replica_count,
         display_name=args.display_name,
         use_spot=args.spot,
+        resume_from_local=args.resume_from_local,
     )
 
 

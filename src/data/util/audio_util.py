@@ -10,11 +10,19 @@ import pyloudnorm
 
 def convert_mono(audio: torch.Tensor):
     return audio.mean(dim=0, keepdim=True)
-    
 
-def resample(audio: torch.Tensor, old_sr: int, final_sr: int):
-    resampler = torchaudio.transforms.Resample(orig_freq=old_sr, new_freq=final_sr)
+
+def resample(
+    audio: torch.Tensor,
+    old_sr: int,
+    final_sr: int,
+    device = torch.device("cpu"),
+):
+    resampler = torchaudio.transforms.Resample(orig_freq=old_sr, new_freq=final_sr).to(
+        device
+    )
     return resampler(audio)
+
 
 def normalize_lufs(
     waveform: torch.Tensor, sr: int, target_lufs: float = -14.0
@@ -48,13 +56,26 @@ def mix_audio_values(audio_values: Dict, channels: List[str]):
     return torch.clip(mixed_audio, -1.0, 1.0)
 
 
-def trim_wav_file(
-    file_path: Path,
+def trim_audio(
+    file_path: Optional[Path] = None,
+    waveform: Optional[torch.Tensor] = None,
     start: Optional[timedelta] = None,
     end: Optional[timedelta] = None,
     out_file_path: Optional[Path] = None,
+    sample_rate: Optional[int] = None,
 ) -> Optional[Tensor]:
-    waveform, sample_rate = torchaudio.load(file_path)
+    assert (file_path is None) + (waveform is None) == 1, (
+        "Provide either file path or Tensor"
+    )
+
+    if file_path is None:
+        assert sample_rate is not None, (
+            "Provide file path for SR or provide SR explicitly"
+        )
+
+    if file_path is not None:
+        waveform, sample_rate = torchaudio.load(file_path)
+
     if start is not None:
         start = int(start.total_seconds() * sample_rate)
     if end is not None:

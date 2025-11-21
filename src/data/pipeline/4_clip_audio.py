@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import pandas as pd
 
-from ..util.audio_util import trim_wav_file
+from ..util.audio_util import trim_audio
 
 
 def create_clips(stems_dir: Path, clips_dir: Path, metadata_entry: Dict):
@@ -22,15 +22,15 @@ def create_clips(stems_dir: Path, clips_dir: Path, metadata_entry: Dict):
     windows = json.loads(metadata_entry["valid_windows"])
     for window in windows:
         start, end = window[0], window[1]
-        lead_audio = trim_wav_file(
-            stems_dir / f"sax_{video_id}.wav",
-            timedelta(seconds=start),
-            timedelta(seconds=end),
+        lead_audio = trim_audio(
+            file_path=stems_dir / f"sax_{video_id}.wav",
+            start=timedelta(seconds=start),
+            end=timedelta(seconds=end),
         )
-        backing_audio = trim_wav_file(
-            stems_dir / f"rhythm_{video_id}.wav",
-            timedelta(seconds=start),
-            timedelta(seconds=end),
+        backing_audio = trim_audio(
+            file_path=stems_dir / f"rhythm_{video_id}.wav",
+            start=timedelta(seconds=start),
+            end=timedelta(seconds=end),
         )
         clips.append(
             {

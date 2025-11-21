@@ -30,7 +30,6 @@ def load_checkpoint_for_training(
     if rank == 0:
         print_rank0(f"Loading checkpoint from {checkpoint_path}")
 
-    # Load checkpoint
     map_location = (
         {"cuda:0": f"cuda:{device.index}"}
         if device.type == "cuda" and device.index
@@ -159,5 +158,6 @@ def save_checkpoint(
     if scheduler:
         checkpoint["scheduler_state_dict"] = scheduler.state_dict()
 
+    Path(checkpoint_path).parent.mkdir(parents=True, exist_ok=True)
     torch.save(checkpoint, checkpoint_path)
     print_rank0(f"Checkpoint saved to {checkpoint_path}")

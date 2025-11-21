@@ -1,5 +1,5 @@
 """
-Comprehensive evaluation script for multi-codebook transformer models.
+Comprehensive objective evaluation script for multi-codebook transformer models.
 Evaluates models on test data with various metrics including FAD.
 
 Usage:
@@ -28,9 +28,9 @@ from ..training.util.config_model import create_model
 from ..data.util.tokenization import detokenize
 from ..data.util.codes_interleaving import remove_delay_interleaving
 
+VGGISH_SR = 16000
+OUTPUT_SR = 32000
 
-TARGET_SR = 16000
-SOURCE_SR = 32000
 
 class ModelEvaluator:
     """Comprehensive model evaluation."""
@@ -265,7 +265,7 @@ class ModelEvaluator:
             pred_flat = predictions.reshape(B * C * T)
             tgt_flat = tgt[:, :, 1:].reshape(B * C * T)
             mask_flat = mask.reshape(B * C * T)
-            
+
             # Keep only non-padded positions
             pred_tokens = pred_flat[mask_flat].cpu().numpy()
             tgt_tokens = tgt_flat[mask_flat].cpu().numpy()
@@ -286,49 +286,51 @@ class ModelEvaluator:
         # Compute token distribution entropies
         pred_dist = pred_counts / pred_counts.sum()
         tgt_dist = tgt_counts / tgt_counts.sum()
-        
+
         predicted_entropy = -np.sum(pred_dist * np.log(pred_dist + 1e-10))
         target_entropy = -np.sum(tgt_dist * np.log(tgt_dist + 1e-10))
 
         # Compute KL divergence: KL(target || predicted)
         all_tokens = np.union1d(pred_unique, tgt_unique)
-        
+
         # Create aligned distributions
         pred_aligned = np.zeros(len(all_tokens))
         tgt_aligned = np.zeros(len(all_tokens))
-        
+
         for i, token in enumerate(all_tokens):
             pred_idx = np.where(pred_unique == token)[0]
             if len(pred_idx) > 0:
                 pred_aligned[i] = pred_counts[pred_idx[0]]
-            
+
             tgt_idx = np.where(tgt_unique == token)[0]
             if len(tgt_idx) > 0:
                 tgt_aligned[i] = tgt_counts[tgt_idx[0]]
-        
+
         # Normalize
         pred_aligned = pred_aligned / pred_aligned.sum()
         tgt_aligned = tgt_aligned / tgt_aligned.sum()
-        
+
         # Add smoothing to avoid log(0)
         epsilon = 1e-10
         pred_aligned = pred_aligned + epsilon
         tgt_aligned = tgt_aligned + epsilon
         pred_aligned = pred_aligned / pred_aligned.sum()
         tgt_aligned = tgt_aligned / tgt_aligned.sum()
-        
+
         # KL(P || Q) = sum(P * log(P/Q))
         kl_div_token_dist = np.sum(tgt_aligned * np.log(tgt_aligned / pred_aligned))
-        
+
         probs = softmax(all_logits, axis=-1)  # [N, vocab_size]
-        
+
         # Create one-hot targets
         target_one_hot = np.zeros_like(probs)
         target_one_hot[np.arange(len(all_targets)), all_targets] = 1
-        
+
         # KL divergence per sample: sum(target * log(target/pred))
         # For one-hot targets, this simplifies to -log(pred[target])
-        kl_per_sample = -np.log(probs[np.arange(len(all_targets)), all_targets] + epsilon)
+        kl_per_sample = -np.log(
+            probs[np.arange(len(all_targets)), all_targets] + epsilon
+        )
         avg_kl_divergence = np.mean(kl_per_sample)
 
         results = {
@@ -348,7 +350,9 @@ class ModelEvaluator:
         )
         print(f"Predicted entropy: {results['predicted_entropy']:.4f}")
         print(f"Target entropy: {results['target_entropy']:.4f}")
-        print(f"KL divergence (token distributions): {results['kl_divergence_token_dist']:.4f}")
+        print(
+            f"KL divergence (token distributions): {results['kl_divergence_token_dist']:.4f}"
+        )
         print(f"KL divergence (average per sample): {results['kl_divergence_avg']:.4f}")
 
         return results
@@ -359,7 +363,6 @@ class ModelEvaluator:
         output_dir: Path,
         num_samples: int = 5,
         max_len: int = 1500,
-        save_for_fad: bool = True,
     ):
         """Generate and save audio samples."""
         print("\n" + "=" * 80)
@@ -369,86 +372,77 @@ class ModelEvaluator:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create subdirectories for FAD
-        if save_for_fad:
-            fad_gen_dir = output_dir / "fad_generated"
-            fad_ref_dir = output_dir / "fad_reference"
-            fad_gen_dir.mkdir(exist_ok=True)
-            fad_ref_dir.mkdir(exist_ok=True)
+        samples_saved = 0
 
-        # Get samples
-        src_batch, tgt_batch = next(iter(self.test_loader))
-        
-        # Only take as many samples as are available in the batch
-        actual_samples = min(num_samples, src_batch.size(0))
-        src_batch = src_batch[:actual_samples].to(self.device)
-        tgt_batch = tgt_batch[:actual_samples].to(self.device)
+        # Loop through batches to accumulate desired number of samples
+        for src_batch, tgt_batch in self.test_loader:
+            if samples_saved >= num_samples:
+                break
 
-        # Generate
-        start_tokens = tgt_batch[:, :, 0]
-        generated = self.model.generate(
-            src_batch,
-            max_len=max_len,
-            start_tokens=start_tokens,
-            temperature=0.9,
-            top_k=50,
-            top_p=0.9,
-        )
+            # Only take as many samples as we need from this batch
+            batch_samples = min(src_batch.size(0), num_samples - samples_saved)
+            src_batch = src_batch[:batch_samples].to(self.device)
+            tgt_batch = tgt_batch[:batch_samples].to(self.device)
 
-        # Save audio for each sample - use actual number generated
-        for i in range(generated.size(0)):  # ← Changed from range(num_samples)
-            print(f"\nSample {i + 1}/{generated.size(0)}")
+            # Generate
+            start_tokens = tgt_batch[:, :, 0]
+            generated = self.model.generate(
+                src_batch,
+                max_len=max_len,
+                start_tokens=start_tokens,
+                temperature=0.9,
+                top_k=50,
+                top_p=0.9,
+            )
 
-            # Generated audio
-            gen_codes = remove_delay_interleaving(generated[i].cpu())
-            try:
-                gen_audio = detokenize(gen_codes)
-                gen_path = output_dir / f"sample_{i}_generated.wav"
-                torchaudio.save(str(gen_path), gen_audio, 32000)
-                print(f"  Saved: sample_{i}_generated.wav")
+            # Save audio for each sample
+            for i in range(generated.size(0)):
+                sample_idx = samples_saved + i
+                print(f"\nSample {sample_idx + 1}/{num_samples}")
 
-                # Also save to FAD directory
-                if save_for_fad:
-                    fad_path = fad_gen_dir / f"{i:04d}.wav"
-                    torchaudio.save(str(fad_path), gen_audio, 32000)
+                # Generated audio
+                gen_audio = self._convert_output_to_audio(generated[i])
+                torchaudio.save(
+                    output_dir / f"{sample_idx}_generated.wav", gen_audio, OUTPUT_SR
+                )
 
-            except Exception as e:
-                print(f"  Error saving generated audio: {e}")
+                # Ground truth audio
+                tgt_trimmed = tgt_batch[i, :, : generated.size(2)]
+                tgt_audio = self._convert_output_to_audio(tgt_trimmed)
+                torchaudio.save(
+                    output_dir / f"{sample_idx}_ground_truth.wav", tgt_audio, OUTPUT_SR
+                )
 
-            # Ground truth audio
-            tgt_trimmed = tgt_batch[i, :, : generated.size(2)].cpu()
-            tgt_codes = remove_delay_interleaving(tgt_trimmed)
-            try:
-                tgt_audio = detokenize(tgt_codes)
-                tgt_path = output_dir / f"sample_{i}_ground_truth.wav"
-                torchaudio.save(str(tgt_path), tgt_audio, 32000)
-                print(f"  Saved: sample_{i}_ground_truth.wav")
+                # Source (backing track)
+                src_audio = self._convert_output_to_audio(src_batch[i])
+                torchaudio.save(
+                    output_dir / f"{sample_idx}_source.wav", src_audio, OUTPUT_SR
+                )
 
-                # Also save to FAD directory
-                if save_for_fad:
-                    fad_path = fad_ref_dir / f"{i:04d}.wav"
-                    torchaudio.save(str(fad_path), tgt_audio, 32000)
+                audio_len = min(
+                    [src_audio.shape[1], tgt_audio.shape[1], gen_audio.shape[1]]
+                )
+                src_audio = src_audio[:, :audio_len]
+                tgt_audio = tgt_audio[:, :audio_len]
+                gen_audio = gen_audio[:, :audio_len]
 
-            except Exception as e:
-                print(f"  Error saving ground truth audio: {e}")
+                combined_ground_truth = torch.clip(src_audio + tgt_audio, -1.0, 1.0)
+                torchaudio.save(
+                    output_dir / f"{sample_idx}_combined_ground_truth.wav",
+                    combined_ground_truth,
+                    OUTPUT_SR,
+                )
+                combined_generated = torch.clip(src_audio + gen_audio, -1.0, 1.0)
+                torchaudio.save(
+                    output_dir / f"{sample_idx}_combined_generated.wav",
+                    combined_generated,
+                    OUTPUT_SR,
+                )
 
-            # Source (backing track)
-            src_codes = remove_delay_interleaving(src_batch[i].cpu())
-            try:
-                src_audio = detokenize(src_codes)
-                src_path = output_dir / f"sample_{i}_source.wav"
-                torchaudio.save(str(src_path), src_audio, 32000)
-                print(f"  Saved: sample_{i}_source.wav")
-            except Exception as e:
-                print(f"  Error saving source audio: {e}")
+            samples_saved += generated.size(0)
 
-        if save_for_fad:
-            print("\nFAD directories created:")
-            print(f"  Generated: {fad_gen_dir}")
-            print(f"  Reference: {fad_ref_dir}")
-            return fad_gen_dir, fad_ref_dir
-
-        return None, None
+    def _convert_output_to_audio(self, codes: torch.Tensor) -> torch.Tensor:
+        return detokenize(remove_delay_interleaving(codes.cpu()))
 
     @torch.no_grad()
     def evaluate_fad(
@@ -485,8 +479,7 @@ class ModelEvaluator:
         print(f"Temporary directories: {temp_dir}")
 
         resampler = torchaudio.transforms.Resample(
-            orig_freq=SOURCE_SR, 
-            new_freq=TARGET_SR
+            orig_freq=OUTPUT_SR, new_freq=VGGISH_SR
         ).to(self.device)
 
         # Generate samples in batches
@@ -523,7 +516,7 @@ class ModelEvaluator:
                     # Resample to 16kHz for VGGish
                     gen_audio_resampled = resampler(gen_audio).cpu()
                     gen_path = fad_gen_dir / f"{idx:04d}.wav"
-                    torchaudio.save(str(gen_path), gen_audio_resampled, TARGET_SR)
+                    torchaudio.save(str(gen_path), gen_audio_resampled, VGGISH_SR)
                 except Exception as e:
                     print(f"\nWarning: Failed to save generated sample {idx}: {e}")
                     continue
@@ -536,7 +529,7 @@ class ModelEvaluator:
                     # Resample to 16kHz for VGGish
                     tgt_audio_resampled = resampler(tgt_audio).cpu()
                     ref_path = fad_ref_dir / f"{idx:04d}.wav"
-                    torchaudio.save(str(ref_path), tgt_audio_resampled, TARGET_SR)
+                    torchaudio.save(str(ref_path), tgt_audio_resampled, VGGISH_SR)
                 except Exception as e:
                     print(f"\nWarning: Failed to save reference sample {idx}: {e}")
                     continue
@@ -551,10 +544,9 @@ class ModelEvaluator:
             print("\nCalculating FAD using frechet-audio-distance library...")
             frechet = FrechetAudioDistance(
                 model_name=model_name,
-                sample_rate=TARGET_SR,
+                sample_rate=VGGISH_SR,
                 use_pca=False,
                 use_activation=False,
-                verbose=True,
             )
             fad_score = frechet.score(
                 str(fad_gen_dir),
@@ -566,6 +558,7 @@ class ModelEvaluator:
 
             # Cleanup
             import shutil
+
             shutil.rmtree(temp_dir)
 
             return {
@@ -577,10 +570,12 @@ class ModelEvaluator:
         except Exception as e:
             print(f"\nError calculating FAD: {e}")
             import traceback
+
             traceback.print_exc()
 
             # Cleanup
             import shutil
+
             shutil.rmtree(temp_dir)
 
             return {
@@ -608,24 +603,15 @@ class ModelEvaluator:
 
         results = {}
 
-        # 1. Loss and accuracy
         results.update(self.evaluate_loss_and_accuracy())
-
-        # 2. Generation quality
         results.update(
             self.evaluate_generation_quality(
                 num_samples=10,
                 temperatures=[0.8, 1.0, 1.2],
             )
         )
-
-        # 3. Autoregressive consistency
         results.update(self.evaluate_autoregressive_consistency(num_samples=5))
-
-        # 4. Token distribution
         results.update(self.analyze_token_distribution())
-
-        # 5. FAD (if enabled)
         if compute_fad:
             results.update(
                 self.evaluate_fad(
@@ -633,16 +619,11 @@ class ModelEvaluator:
                     model_name="vggish",
                 )
             )
-
-        # 6. Save audio samples
         if save_audio:
             self.save_audio_samples(
                 output_dir / "audio_samples",
                 num_samples=5,
-                save_for_fad=False,  # FAD already generated its own
             )
-
-        # Save results
         results["timestamp"] = datetime.now().isoformat()
         results["model_config"] = self.config["model"]
 
@@ -677,7 +658,7 @@ def main():
         "--config", type=str, required=True, help="Path to model config"
     )
     parser.add_argument(
-        "--checkpoint", type=str, default = None, help="Path to checkpoint"
+        "--checkpoint", type=str, default=None, help="Path to checkpoint"
     )
     parser.add_argument(
         "--output-dir",
@@ -750,8 +731,9 @@ def main():
     )
 
     print("\nEvaluation complete!")
-    print("Evaluation results:")
+    print("Evaluation results .json:")
     pprint(results)
+
 
 if __name__ == "__main__":
     main()

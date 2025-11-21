@@ -22,7 +22,7 @@ model:
 
 training:
   use_pbar: false
-  num_epochs: 1000
+  num_epochs: 500
   batch_size: 64
   gradient_accumulation_steps: 1
   
@@ -53,4 +53,4 @@ training:
   save_interval: 100
   num_workers: 2
   
-  resume_from_checkpoint: "models/small/checkpoints/interrupt.pt"
+  resume_from_checkpoint: "models/small/checkpoints/latest.pt"

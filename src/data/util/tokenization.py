@@ -13,10 +13,13 @@ def tokenize(
     processor: AutoProcessor = processor,
     model: EncodecModel = model,
     chunk_len_s: Optional[float] = None,
+    device: Optional = None,
 ):
     if audio_values.dim() > 2:
         raise NotImplementedError("Only single audio file supported for now")
 
+    if device is not None:
+        model = model.to(device)
     if chunk_len_s is None:
         chunks = [audio_values]
     else:
@@ -45,7 +48,9 @@ def tokenize(
     return codes
 
 
-def detokenize(audio_codes: Tensor, model: EncodecModel = model):
+def detokenize(audio_codes: Tensor, model: EncodecModel = model, device: Optional = None):
+    if device is not None:
+        model = model.to(device)
     audio_codes = audio_codes.unsqueeze(0).unsqueeze(0)
     waveform = model.decode(audio_codes, [None])
     return waveform.audio_values.detach()[0]

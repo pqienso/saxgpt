@@ -19,9 +19,11 @@ model:
   scale_embeddings: true
 
 training:
+  use_pbar: false
+
   num_epochs: 1000
-  batch_size: 8
-  gradient_accumulation_steps: 2
+  batch_size: 32
+  gradient_accumulation_steps: 1
   
   scheduler:
     type: "cosine"
